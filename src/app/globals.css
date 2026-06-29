@@ -1,26 +1,68 @@
 @import "tailwindcss";
 
+/* ─── NexoAgent Design Tokens ─── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --background:           #FFFFFF;
+  --background-secondary: #F8FAFC;
+  --sidebar-bg:           #F1F5F9;
+
+  /* Text */
+  --foreground:           #0A0A0A;
+  --foreground-secondary: #64748B;
+
+  /* Brand */
+  --primary:              #7BC81E;
+  --primary-hover:        #6AB318;
+  --primary-foreground:   #0A0A0A;
+
+  /* Border */
+  --border:               #E2E8F0;
+
+  /* Semantic */
+  --success:              #22C55E;
+  --warning:              #F59E0B;
+  --danger:               #EF4444;
 }
 
+/* ─── Dark Mode (ativado via classe .dark no <html>, nunca automático) ─── */
+.dark {
+  --background:           #0A0A0A;
+  --background-secondary: #111827;
+  --sidebar-bg:           #111827;
+  --foreground:           #F8FAFC;
+  --foreground-secondary: #94A3B8;
+  --border:               #1E293B;
+  /* Brand mantém o mesmo verde Nexo no dark */
+}
+
+/* ─── Tailwind v4 Theme ─── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Fonts */
+  --font-display: var(--font-outfit);
+  --font-sans:    var(--font-inter);
+
+  /* Colors */
+  --color-background:           var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-sidebar:              var(--sidebar-bg);
+  --color-foreground:           var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-primary:              var(--primary);
+  --color-primary-hover:        var(--primary-hover);
+  --color-primary-foreground:   var(--primary-foreground);
+  --color-border:               var(--border);
+  --color-success:              var(--success);
+  --color-warning:              var(--warning);
+  --color-danger:               var(--danger);
+
+  /* Border radius padrão Nexo */
+  --radius-nexo: 12px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ─── Base ─── */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
