@@ -195,7 +195,8 @@ async function handleMessage(
   instanceName: string,
   remoteJid: string,
   contactName: string | null,
-  text: string
+  text: string,
+  messageId: string
 ): Promise<void> {
   try {
     const admin = createAdminClient()
@@ -247,11 +248,24 @@ async function handleMessage(
 
     const { id: conversationId } = convData as ConversationRow
 
-    // 4. Save user message
+    // 4. Deduplicate: ignora se já processamos este messageId
+    const { data: existing } = await admin
+      .from('messages')
+      .select('id')
+      .eq('whatsapp_message_id', messageId)
+      .maybeSingle()
+
+    if (existing) {
+      console.log('[agent] duplicata ignorada:', messageId)
+      return
+    }
+
+    // 5. Save user message with whatsapp_message_id
     const { error: msgErr } = await admin.from('messages').insert({
-      conversation_id: conversationId,
-      role:            'user',
-      content:         text,
+      conversation_id:      conversationId,
+      role:                 'user',
+      content:              text,
+      whatsapp_message_id:  messageId,
     })
 
     if (msgErr) {
@@ -259,25 +273,26 @@ async function handleMessage(
       return
     }
 
-    // 5. Fetch last 10 messages for history
+    // 6. Fetch last 20 messages for history
     const { data: historyData } = await admin
       .from('messages')
       .select('role, content')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
-      .limit(10)
+      .limit(20)
 
     const history = (historyData ?? []) as MessageRow[]
 
-    // 6. Build system prompt
+    // 7. Build system prompt
     const systemPrompt = buildSystemPrompt(agent)
 
-    // 7. Call Groq
+    // 8. Call Groq
     const groqMessages: GroqChatMessage[] = [
       { role: 'system', content: systemPrompt },
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ]
 
+    console.log('[agent] system prompt chars:', systemPrompt.length)
     console.log('[agent] chamando Groq com', groqMessages.length, 'mensagens')
     const reply = await callGroq(groqMessages)
 
@@ -288,7 +303,7 @@ async function handleMessage(
 
     console.log('[agent] resposta Groq:', reply.slice(0, 120))
 
-    // 8. Save assistant message
+    // 9. Save assistant message
     await admin.from('messages').insert({
       conversation_id: conversationId,
       role:            'assistant',
@@ -301,7 +316,7 @@ async function handleMessage(
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', conversationId)
 
-    // 9. Send via Evolution API (strip @s.whatsapp.net)
+    // 10. Send via Evolution API (strip @s.whatsapp.net)
     const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
     await sendEvolutionText(instanceName, phone, reply)
   } catch (err) {
@@ -349,7 +364,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       payload.instance,
       msg.key.remoteJid,
       msg.pushName ?? null,
-      text
+      text,
+      msg.key.id
     ))
   }
 
