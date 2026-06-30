@@ -12,7 +12,6 @@ export type AgentConfigData = {
   agent_avatar_url: string | null
   business_context: string
   escalation_instructions: string
-  manager_whatsapp: string | null
 }
 
 export async function saveAgentConfigAction(
@@ -20,11 +19,10 @@ export async function saveAgentConfigAction(
   formData: FormData
 ): Promise<AgentFormState> {
   const companyId          = formData.get('company_id') as string
-  const agentName          = (formData.get('agent_name') as string).trim()
-  const agentAvatarUrl     = (formData.get('agent_avatar_url') as string).trim() || null
-  const businessContext    = (formData.get('business_context') as string).trim()
+  const agentName              = (formData.get('agent_name') as string).trim()
+  const agentAvatarUrl         = (formData.get('agent_avatar_url') as string).trim() || null
+  const businessContext        = (formData.get('business_context') as string).trim()
   const escalationInstructions = (formData.get('escalation_instructions') as string).trim()
-  const managerWhatsapp        = (formData.get('manager_whatsapp') as string).trim() || null
 
   if (!companyId) return { error: 'Empresa não identificada.' }
   if (!agentName) return { error: 'O nome do agente é obrigatório.' }
@@ -58,7 +56,6 @@ export async function saveAgentConfigAction(
       agent_avatar_url:         agentAvatarUrl,
       business_context:         businessContext,
       escalation_instructions:  escalationInstructions,
-      manager_whatsapp:         managerWhatsapp,
     },
     { onConflict: 'company_id' }
   )

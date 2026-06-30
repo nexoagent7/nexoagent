@@ -56,6 +56,9 @@ type AgentConfigRow = {
   agent_name: string
   business_context: string | null
   escalation_instructions: string | null
+}
+
+type CompanyRow = {
   manager_whatsapp: string | null
 }
 
@@ -229,14 +232,22 @@ async function handleMessage(
 
     const { company_id } = instanceData as WhatsAppInstanceRow
 
-    // 2. Fetch agent_configs
-    const { data: agentData } = await admin
-      .from('agent_configs')
-      .select('agent_name, business_context, escalation_instructions, manager_whatsapp')
-      .eq('company_id', company_id)
-      .single()
+    // 2. Fetch agent_configs and company manager_whatsapp in parallel
+    const [{ data: agentData }, { data: companyData }] = await Promise.all([
+      admin
+        .from('agent_configs')
+        .select('agent_name, business_context, escalation_instructions')
+        .eq('company_id', company_id)
+        .single(),
+      admin
+        .from('companies')
+        .select('manager_whatsapp')
+        .eq('id', company_id)
+        .single(),
+    ])
 
     const agent = agentData as AgentConfigRow | null
+    const managerWhatsapp = (companyData as CompanyRow | null)?.manager_whatsapp ?? null
 
     // 3. Upsert conversation (unique on company_id + remote_jid)
     const now = new Date().toISOString()
@@ -352,8 +363,8 @@ async function handleMessage(
     await sendEvolutionText(instanceName, phone, cleanReply)
 
     // 11. Notify manager if transferring
-    if (shouldTransfer && agent?.manager_whatsapp) {
-      const managerPhone = agent.manager_whatsapp.replace(/\D/g, '')
+    if (shouldTransfer && managerWhatsapp) {
+      const managerPhone = managerWhatsapp.replace(/\D/g, '')
       const contactLabel = contactName ?? phone
       const notificationText =
         `⚠️ Atendimento pendente: ${contactLabel} está aguardando resposta humana. ` +
