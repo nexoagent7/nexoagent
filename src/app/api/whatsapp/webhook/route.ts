@@ -103,18 +103,27 @@ function toArray(data: EvolutionMessage | EvolutionMessage[]): EvolutionMessage[
 }
 
 function buildSystemPrompt(agent: AgentConfigRow | null): string {
+  const styleRules = [
+    'PRIORIDADE MÁXIMA: sempre responda diretamente a pergunta que o cliente acabou de fazer. Se ele perguntar o preço, responda o preço. Nunca substitua a resposta direta por uma reapresentação geral do produto ou da lista de livros — isso é uma falha grave.',
+    'Responda sempre em português brasileiro, de forma natural e conversacional, como alguém digitando no celular.',
+    'Limite cada resposta a no máximo 2 a 4 frases curtas. Isso é WhatsApp, não e-mail.',
+    'Nunca use markdown: sem **negrito**, sem #, sem listas com - ou *. Se precisar listar algo, use frase corrida ou números seguidos de ponto.',
+    'Releia o histórico da conversa antes de responder. Nunca repita uma resposta já dada. Se o cliente insistir na mesma pergunta, reformule com outras palavras e pergunte o que mais ele quer saber.',
+    'Faça apenas uma pergunta por mensagem.',
+    'Use saudação ("Oi") apenas na primeira mensagem da conversa. Nas demais, vá direto ao ponto.',
+    'Nunca invente preço, frete, prazo, estoque ou forma de pagamento que não esteja explícito no contexto do negócio. Se não souber, diga com transparência que vai confirmar.',
+  ]
+
   if (!agent) {
     return [
       'Você é um assistente de atendimento ao cliente prestativo e cordial.',
-      'Responda sempre em português brasileiro de forma clara e objetiva.',
-      'Mantenha as respostas curtas e adequadas para o formato de chat no WhatsApp.',
+      ...styleRules,
     ].join('\n')
   }
 
   const parts = [
     `Você é ${agent.agent_name}, um assistente de atendimento ao cliente.`,
-    'Responda sempre em português brasileiro de forma clara e objetiva.',
-    'Mantenha as respostas curtas e adequadas para o formato de chat no WhatsApp.',
+    ...styleRules,
   ]
 
   if (agent.business_context?.trim()) {
@@ -292,6 +301,7 @@ async function handleMessage(
       ...history.map((m) => ({ role: m.role, content: m.content })),
     ]
 
+    console.log('[agent] system prompt:\n', systemPrompt)
     console.log('[agent] system prompt chars:', systemPrompt.length)
     console.log('[agent] chamando Groq com', groqMessages.length, 'mensagens')
     const reply = await callGroq(groqMessages)
