@@ -140,11 +140,13 @@ function buildSystemPrompt(agent: AgentConfigRow | null): string {
   return parts.join('\n')
 }
 
-async function callGroq(messages: GroqChatMessage[]): Promise<string | null> {
+type GroqResult = { content: string | null; rateLimited: boolean }
+
+async function callGroq(messages: GroqChatMessage[]): Promise<GroqResult> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     console.error('[agent] GROQ_API_KEY não configurada')
-    return null
+    return { content: null, rateLimited: false }
   }
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -164,11 +166,11 @@ async function callGroq(messages: GroqChatMessage[]): Promise<string | null> {
   if (!res.ok) {
     const err = await res.text()
     console.error('[agent] Groq error', res.status, err)
-    return null
+    return { content: null, rateLimited: res.status === 429 }
   }
 
   const json = (await res.json()) as GroqApiResponse
-  return json.choices[0]?.message?.content?.trim() ?? null
+  return { content: json.choices[0]?.message?.content?.trim() ?? null, rateLimited: false }
 }
 
 async function sendEvolutionText(
@@ -307,7 +309,14 @@ async function handleMessage(
     console.log('[agent] system prompt:\n', systemPrompt)
     console.log('[agent] system prompt chars:', systemPrompt.length)
     console.log('[agent] chamando Groq com', groqMessages.length, 'mensagens')
-    const reply = await callGroq(groqMessages)
+    const { content: reply, rateLimited } = await callGroq(groqMessages)
+
+    if (rateLimited) {
+      console.warn('[agent] Groq rate limit (429) — enviando mensagem de fallback ao cliente')
+      const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
+      await sendEvolutionText(instanceName, phone, 'Nosso assistente está com alta demanda agora. Em alguns minutos retornamos, tudo bem? 🙏')
+      return
+    }
 
     if (!reply) {
       console.error('[agent] Groq não retornou resposta')
