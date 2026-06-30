@@ -113,6 +113,7 @@ function buildSystemPrompt(agent: AgentConfigRow | null): string {
     'Faça apenas uma pergunta por mensagem.',
     'Use saudação ("Oi") apenas na primeira mensagem da conversa. Nas demais, vá direto ao ponto.',
     'Nunca invente preço, frete, prazo, estoque ou forma de pagamento que não esteja explícito no contexto do negócio. Se não souber, diga com transparência que vai confirmar.',
+    'Quando decidir transferir para um humano, inclua exatamente [TRANSFERIR] no início da mensagem — essa tag será removida antes de chegar ao cliente.',
   ]
 
   if (!agent) {
@@ -314,22 +315,31 @@ async function handleMessage(
 
     console.log('[agent] resposta Groq:', reply.slice(0, 120))
 
-    // 9. Save assistant message
+    // 9. Detect [TRANSFERIR] tag and clean reply
+    const shouldTransfer = reply.includes('[TRANSFERIR]')
+    const cleanReply = reply.replace('[TRANSFERIR]', '').trimStart()
+
+    // 9a. Save assistant message (without tag)
     await admin.from('messages').insert({
       conversation_id: conversationId,
       role:            'assistant',
-      content:         reply,
+      content:         cleanReply,
     })
 
-    // Update last_message_at
+    // Update last_message_at + status if transferring
+    const conversationUpdate: Record<string, string> = { last_message_at: new Date().toISOString() }
+    if (shouldTransfer) {
+      conversationUpdate.status = 'waiting_human'
+      console.log('[agent] transferindo para humano — status: waiting_human')
+    }
     await admin
       .from('conversations')
-      .update({ last_message_at: new Date().toISOString() })
+      .update(conversationUpdate)
       .eq('id', conversationId)
 
     // 10. Send via Evolution API (strip @s.whatsapp.net)
     const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
-    await sendEvolutionText(instanceName, phone, reply)
+    await sendEvolutionText(instanceName, phone, cleanReply)
   } catch (err) {
     console.error('[agent] erro não tratado:', err)
   }
