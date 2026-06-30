@@ -17,10 +17,10 @@ interface AgentFormProps {
 export function AgentForm({ companyId, initialData }: AgentFormProps) {
   const [state, action, pending] = useActionState(saveAgentConfigAction, initialState)
   const [contextLength, setContextLength] = useState(
-    initialData?.business_context.length ?? 0
+    initialData?.business_context?.length ?? 0
   )
   const [avatarPreview, setAvatarPreview] = useState(
-    initialData?.avatar_url ?? ''
+    initialData?.agent_avatar_url ?? ''
   )
 
   return (
@@ -34,22 +34,22 @@ export function AgentForm({ companyId, initialData }: AgentFormProps) {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="space-y-1.5">
-            <label htmlFor="name" className="block text-sm font-medium text-foreground">
+            <label htmlFor="agent_name" className="block text-sm font-medium text-foreground">
               Nome do agente
             </label>
             <Input
-              id="name"
-              name="name"
+              id="agent_name"
+              name="agent_name"
               type="text"
               required
               placeholder="Ex: Sofia, Max, Atendente Virtual..."
-              defaultValue={initialData?.name ?? ''}
+              defaultValue={initialData?.agent_name ?? ''}
               disabled={pending}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="avatar_url" className="block text-sm font-medium text-foreground">
+            <label htmlFor="agent_avatar_url" className="block text-sm font-medium text-foreground">
               Foto do agente{' '}
               <span className="font-normal text-foreground-secondary">(URL da imagem)</span>
             </label>
@@ -63,11 +63,11 @@ export function AgentForm({ companyId, initialData }: AgentFormProps) {
                 />
               )}
               <Input
-                id="avatar_url"
-                name="avatar_url"
+                id="agent_avatar_url"
+                name="agent_avatar_url"
                 type="url"
                 placeholder="https://exemplo.com/foto.png"
-                defaultValue={initialData?.avatar_url ?? ''}
+                defaultValue={initialData?.agent_avatar_url ?? ''}
                 disabled={pending}
                 onChange={(e) => setAvatarPreview(e.target.value)}
               />

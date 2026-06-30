@@ -1,12 +1,12 @@
 import { redirect } from 'next/navigation'
 import { MessageSquare, TrendingUp, Zap, Wifi } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { KpiCard } from '@/components/dashboard/kpi-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 type AgentConfig = {
-  name: string
-  is_active: boolean
+  agent_name: string
 }
 
 type UserProfile = {
@@ -22,7 +22,9 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  const { data } = await supabase
+  const admin = createAdminClient()
+
+  const { data } = await admin
     .from('user_profiles')
     .select('company_id')
     .eq('id', user.id)
@@ -33,16 +35,16 @@ export default async function DashboardPage() {
   let agentConfig: AgentConfig | null = null
 
   if (profile?.company_id) {
-    const { data: agentData } = await supabase
+    const { data: agentData } = await admin
       .from('agent_configs')
-      .select('name, is_active')
+      .select('agent_name')
       .eq('company_id', profile.company_id)
       .single()
 
     agentConfig = agentData as AgentConfig | null
   }
 
-  const agentStatus = agentConfig?.is_active ?? false
+  const agentConfigured = agentConfig !== null
 
   return (
     <div className="space-y-6">
@@ -78,10 +80,10 @@ export default async function DashboardPage() {
         />
         <KpiCard
           title="Status do agente"
-          value={agentStatus ? 'Conectado' : 'Desconectado'}
-          subtitle={agentConfig?.name ?? 'Nenhum agente configurado'}
+          value={agentConfigured ? 'Configurado' : 'Não configurado'}
+          subtitle={agentConfig?.agent_name ?? 'Nenhum agente configurado'}
           icon={Wifi}
-          variant={agentStatus ? 'success' : 'warning'}
+          variant={agentConfigured ? 'success' : 'warning'}
         />
       </div>
 

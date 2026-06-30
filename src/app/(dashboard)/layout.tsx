@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { DashboardSidebar } from '@/components/dashboard/sidebar'
 import { DashboardHeader } from '@/components/dashboard/header'
 
@@ -11,7 +12,7 @@ type UserProfile = {
 
 type Company = {
   name: string
-  plan_name: string
+  plans: { name: string }[] | { name: string } | null
 }
 
 export default async function DashboardLayout({
@@ -27,7 +28,10 @@ export default async function DashboardLayout({
 
   if (!user) redirect('/login')
 
-  const { data } = await supabase
+  // Admin client para evitar recursão RLS em user_profiles
+  const admin = createAdminClient()
+
+  const { data } = await admin
     .from('user_profiles')
     .select('full_name, role, company_id')
     .eq('id', user.id)
@@ -39,16 +43,19 @@ export default async function DashboardLayout({
   let planName = 'Free'
 
   if (profile?.company_id) {
-    const { data: companyData } = await supabase
+    const { data: companyData } = await admin
       .from('companies')
-      .select('name, plan_name')
+      .select('name, plans(name)')
       .eq('id', profile.company_id)
       .single()
 
-    const company = companyData as Company | null
+    const company = companyData as unknown as Company | null
     if (company) {
       companyName = company.name
-      planName = company.plan_name
+      const plans = company.plans
+      planName = Array.isArray(plans)
+        ? (plans[0]?.name ?? 'Free')
+        : (plans?.name ?? 'Free')
     }
   }
 

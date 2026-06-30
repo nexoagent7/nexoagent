@@ -3,16 +3,16 @@ import { updateSession } from '@/lib/supabase/middleware'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const PUBLIC_ROUTES = ['/', '/login', '/register']
+const PUBLIC_PREFIXES = ['/api/whatsapp/webhook']
 const MASTER_PREFIX = '/master'
 const DASHBOARD_PREFIX = '/dashboard'
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Rotas públicas passam direto (mas ainda atualizam a sessão)
-  if (PUBLIC_ROUTES.includes(pathname)) {
-    const { supabaseResponse } = await updateSession(request)
-    return supabaseResponse
+  // Rotas públicas passam direto sem sessão
+  if (PUBLIC_ROUTES.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
   }
 
   const { supabaseResponse, user, supabase } = await updateSession(request)

@@ -1,11 +1,10 @@
 import { redirect } from 'next/navigation'
 import { Bot } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { Card, CardContent } from '@/components/ui/card'
 import { AgentForm } from './agent-form'
 import type { AgentConfigData } from './actions'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 
 type UserProfile = {
   company_id: string | null
@@ -20,7 +19,9 @@ export default async function AgentPage() {
 
   if (!user) redirect('/login')
 
-  const { data } = await supabase
+  const admin = createAdminClient()
+
+  const { data } = await admin
     .from('user_profiles')
     .select('company_id')
     .eq('id', user.id)
@@ -53,9 +54,9 @@ export default async function AgentPage() {
     )
   }
 
-  const { data: agentData } = await supabase
+  const { data: agentData } = await admin
     .from('agent_configs')
-    .select('id, company_id, name, avatar_url, business_context, escalation_instructions, is_active')
+    .select('id, company_id, agent_name, agent_avatar_url, business_context, escalation_instructions')
     .eq('company_id', companyId)
     .single()
 

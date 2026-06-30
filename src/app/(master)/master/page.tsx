@@ -4,13 +4,17 @@ import { KpiCard } from '@/components/dashboard/kpi-card'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
+type Plan = {
+  name: string
+}
+
 type Company = {
   id: string
   name: string
-  plan_name: string
   plan_status: 'trial' | 'active' | 'inactive'
   conversations_used_this_month: number
   created_at: string
+  plans: Plan[] | Plan | null
 }
 
 type PlanStatus = Company['plan_status']
@@ -37,12 +41,12 @@ export default async function MasterPage() {
   const { data, count } = await admin
     .from('companies')
     .select(
-      'id, name, plan_name, plan_status, conversations_used_this_month, created_at',
+      'id, name, plan_status, conversations_used_this_month, created_at, plans(name)',
       { count: 'exact' }
     )
     .order('created_at', { ascending: false })
 
-  const companies = (data ?? []) as Company[]
+  const companies = (data ?? []) as unknown as Company[]
   const totalCompanies = count ?? 0
 
   const trialCount = companies.filter((c) => c.plan_status === 'trial').length
@@ -146,7 +150,9 @@ export default async function MasterPage() {
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">
                           <span className="text-sm text-foreground-secondary">
-                            {company.plan_name}
+                            {Array.isArray(company.plans)
+                              ? (company.plans[0]?.name ?? '—')
+                              : (company.plans?.name ?? '—')}
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-6 py-4">

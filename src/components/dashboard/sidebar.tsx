@@ -2,12 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Bot, MessageSquare, Settings } from 'lucide-react'
+import { LayoutDashboard, Bot, MessageSquare, Settings, Smartphone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { label: 'Início',        href: '/dashboard',          icon: LayoutDashboard },
   { label: 'Meu Agente',    href: '/dashboard/agent',    icon: Bot },
+  { label: 'WhatsApp',      href: '/dashboard/whatsapp', icon: Smartphone },
   { label: 'Atendimentos',  href: '/dashboard/kanban',   icon: MessageSquare },
   { label: 'Configurações', href: '/dashboard/settings', icon: Settings },
 ]

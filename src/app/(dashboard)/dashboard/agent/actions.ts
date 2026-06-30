@@ -8,25 +8,24 @@ export type AgentFormState = { error?: string; success?: string }
 export type AgentConfigData = {
   id: string
   company_id: string
-  name: string
-  avatar_url: string | null
+  agent_name: string
+  agent_avatar_url: string | null
   business_context: string
   escalation_instructions: string
-  is_active: boolean
 }
 
 export async function saveAgentConfigAction(
   _prevState: AgentFormState,
   formData: FormData
 ): Promise<AgentFormState> {
-  const companyId = formData.get('company_id') as string
-  const name = (formData.get('name') as string).trim()
-  const avatarUrl = (formData.get('avatar_url') as string).trim() || null
-  const businessContext = (formData.get('business_context') as string).trim()
+  const companyId          = formData.get('company_id') as string
+  const agentName          = (formData.get('agent_name') as string).trim()
+  const agentAvatarUrl     = (formData.get('agent_avatar_url') as string).trim() || null
+  const businessContext    = (formData.get('business_context') as string).trim()
   const escalationInstructions = (formData.get('escalation_instructions') as string).trim()
 
   if (!companyId) return { error: 'Empresa não identificada.' }
-  if (!name)      return { error: 'O nome do agente é obrigatório.' }
+  if (!agentName) return { error: 'O nome do agente é obrigatório.' }
 
   // Verifica que o usuário logado pertence à empresa informada
   const supabase = await createClient()
@@ -36,27 +35,27 @@ export async function saveAgentConfigAction(
 
   if (!user) return { error: 'Sessão expirada. Faça login novamente.' }
 
-  const { data } = await supabase
+  const admin = createAdminClient()
+
+  const { data: profile } = await admin
     .from('user_profiles')
     .select('company_id')
     .eq('id', user.id)
     .single()
 
-  const profile = data as { company_id: string | null } | null
+  const profileRow = profile as { company_id: string | null } | null
 
-  if (profile?.company_id !== companyId) {
+  if (profileRow?.company_id !== companyId) {
     return { error: 'Acesso negado.' }
   }
 
-  const admin = createAdminClient()
-
   const { error } = await admin.from('agent_configs').upsert(
     {
-      company_id: companyId,
-      name,
-      avatar_url: avatarUrl,
-      business_context: businessContext,
-      escalation_instructions: escalationInstructions,
+      company_id:               companyId,
+      agent_name:               agentName,
+      agent_avatar_url:         agentAvatarUrl,
+      business_context:         businessContext,
+      escalation_instructions:  escalationInstructions,
     },
     { onConflict: 'company_id' }
   )
