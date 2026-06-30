@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 
 export type LoginState = { error?: string }
@@ -35,7 +36,8 @@ export async function loginAction(
   console.log('[login] user.id:', user.id)
   console.log('[login] user.email:', user.email)
 
-  const { data: profile, error: profileError } = await supabase
+  const admin = createAdminClient()
+  const { data: profile, error: profileError } = await admin
     .from('user_profiles')
     .select('role')
     .eq('id', user.id)
