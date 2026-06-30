@@ -291,7 +291,7 @@ async function handleMessage(
       .select('role, content')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
-      .limit(20)
+      .limit(10)
 
     const history = (historyData ?? []) as MessageRow[]
 
