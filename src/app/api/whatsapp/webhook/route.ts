@@ -339,8 +339,8 @@ async function handleMessage(
     // Update last_message_at + status if transferring
     const conversationUpdate: Record<string, string> = { last_message_at: new Date().toISOString() }
     if (shouldTransfer) {
-      conversationUpdate.status = 'waiting_human'
-      console.log('[agent] transferindo para humano — status: waiting_human')
+      conversationUpdate.status = 'escalated'
+      console.log('[agent] transferindo para humano — status: escalated')
     }
     await admin
       .from('conversations')

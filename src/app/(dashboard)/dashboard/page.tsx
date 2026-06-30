@@ -46,6 +46,21 @@ export default async function DashboardPage() {
 
   const agentConfigured = agentConfig !== null
 
+  let conversationsThisMonth = 0
+  if (profile?.company_id) {
+    const startOfMonth = new Date()
+    startOfMonth.setUTCDate(1)
+    startOfMonth.setUTCHours(0, 0, 0, 0)
+
+    const { count } = await admin
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', profile.company_id)
+      .gte('created_at', startOfMonth.toISOString())
+
+    conversationsThisMonth = count ?? 0
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -59,7 +74,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Conversas este mês"
-          value="0 / 100"
+          value={`${conversationsThisMonth} / 100`}
           subtitle="do limite do plano"
           icon={MessageSquare}
           variant="default"
