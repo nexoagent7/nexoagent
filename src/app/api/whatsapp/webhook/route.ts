@@ -56,6 +56,7 @@ type AgentConfigRow = {
   agent_name: string
   business_context: string | null
   escalation_instructions: string | null
+  manager_whatsapp: string | null
 }
 
 type ConversationRow = {
@@ -229,7 +230,7 @@ async function handleMessage(
     // 2. Fetch agent_configs
     const { data: agentData } = await admin
       .from('agent_configs')
-      .select('agent_name, business_context, escalation_instructions')
+      .select('agent_name, business_context, escalation_instructions, manager_whatsapp')
       .eq('company_id', company_id)
       .single()
 
@@ -340,6 +341,17 @@ async function handleMessage(
     // 10. Send via Evolution API (strip @s.whatsapp.net)
     const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
     await sendEvolutionText(instanceName, phone, cleanReply)
+
+    // 11. Notify manager if transferring
+    if (shouldTransfer && agent?.manager_whatsapp) {
+      const managerPhone = agent.manager_whatsapp.replace(/\D/g, '')
+      const contactLabel = contactName ?? phone
+      const notificationText =
+        `⚠️ Atendimento pendente: ${contactLabel} está aguardando resposta humana. ` +
+        `Acesse o painel para responder: https://nexoagent-gold.vercel.app/dashboard/kanban`
+      await sendEvolutionText(instanceName, managerPhone, notificationText)
+      console.log('[agent] notificação enviada ao gestor:', managerPhone)
+    }
   } catch (err) {
     console.error('[agent] erro não tratado:', err)
   }

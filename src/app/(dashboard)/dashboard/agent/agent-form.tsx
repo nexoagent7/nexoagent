@@ -131,6 +131,24 @@ export function AgentForm({ companyId, initialData }: AgentFormProps) {
               className="w-full resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-foreground-secondary transition-colors focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
             />
           </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="manager_whatsapp" className="block text-sm font-medium text-foreground">
+              WhatsApp do gestor{' '}
+              <span className="font-normal text-foreground-secondary">(notificações de transferência)</span>
+            </label>
+            <p className="text-xs text-foreground-secondary">
+              Número que receberá aviso quando o agente transferir um atendimento para humano.
+            </p>
+            <Input
+              id="manager_whatsapp"
+              name="manager_whatsapp"
+              type="text"
+              placeholder="+5511999999999"
+              defaultValue={initialData?.manager_whatsapp ?? ''}
+              disabled={pending}
+            />
+          </div>
         </CardContent>
       </Card>
 
