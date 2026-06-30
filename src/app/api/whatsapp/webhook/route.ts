@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 // ─── Evolution API v2 — messages.upsert payload ───────────────────────────────
@@ -343,13 +344,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('[webhook] timestamp:', new Date(msg.messageTimestamp * 1000).toISOString())
     console.log('─────────────────────────────────')
 
-    // Dispara o processamento sem bloquear o 200
-    void handleMessage(
+    // waitUntil mantém a função viva na Vercel até a Promise resolver
+    waitUntil(handleMessage(
       payload.instance,
       msg.key.remoteJid,
       msg.pushName ?? null,
       text
-    )
+    ))
   }
 
   return NextResponse.json({ ok: true })
