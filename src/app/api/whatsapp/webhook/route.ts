@@ -105,6 +105,7 @@ function toArray(data: EvolutionMessage | EvolutionMessage[]): EvolutionMessage[
 function buildSystemPrompt(agent: AgentConfigRow | null): string {
   const styleRules = [
     'PRIORIDADE MÁXIMA: sempre responda diretamente a pergunta que o cliente acabou de fazer. Se ele perguntar o preço, responda o preço. Nunca substitua a resposta direta por uma reapresentação geral do produto ou da lista de livros — isso é uma falha grave.',
+    'Exemplo do que NÃO fazer: cliente pergunta "Quanto custa?" e você responde reapresentando os 3 livros sem dizer o preço — isso está ERRADO. Exemplo do que fazer: cliente pergunta "Quanto custa?" e você responde "O Kit completo sai por R$ 55,00." — isso está CERTO.',
     'Responda sempre em português brasileiro, de forma natural e conversacional, como alguém digitando no celular.',
     'Limite cada resposta a no máximo 2 a 4 frases curtas. Isso é WhatsApp, não e-mail.',
     'Nunca use markdown: sem **negrito**, sem #, sem listas com - ou *. Se precisar listar algo, use frase corrida ou números seguidos de ponto.',
@@ -154,7 +155,7 @@ async function callGroq(messages: GroqChatMessage[]): Promise<string | null> {
       model: 'llama-3.3-70b-versatile',
       messages,
       max_tokens: 1024,
-      temperature: 0.7,
+      temperature: 0.3,
     }),
   })
 
