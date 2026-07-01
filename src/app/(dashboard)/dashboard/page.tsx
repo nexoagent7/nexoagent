@@ -13,6 +13,10 @@ type UserProfile = {
   company_id: string | null
 }
 
+type CompanyWithPlan = {
+  plans: { conversations_limit: number | null } | { conversations_limit: number | null }[] | null
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
 
@@ -47,18 +51,32 @@ export default async function DashboardPage() {
   const agentConfigured = agentConfig !== null
 
   let conversationsThisMonth = 0
+  let conversationsLimit: number | null = null
+
   if (profile?.company_id) {
     const startOfMonth = new Date()
     startOfMonth.setUTCDate(1)
     startOfMonth.setUTCHours(0, 0, 0, 0)
 
-    const { count } = await admin
-      .from('conversations')
-      .select('id', { count: 'exact', head: true })
-      .eq('company_id', profile.company_id)
-      .gte('created_at', startOfMonth.toISOString())
+    const [{ count }, { data: companyPlanData }] = await Promise.all([
+      admin
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', profile.company_id)
+        .gte('created_at', startOfMonth.toISOString()),
+      admin
+        .from('companies')
+        .select('plans(conversations_limit)')
+        .eq('id', profile.company_id)
+        .single(),
+    ])
 
     conversationsThisMonth = count ?? 0
+
+    const rawPlans = (companyPlanData as CompanyWithPlan | null)?.plans
+    conversationsLimit = rawPlans
+      ? (Array.isArray(rawPlans) ? rawPlans[0]?.conversations_limit : rawPlans.conversations_limit) ?? null
+      : null
   }
 
   return (
@@ -74,7 +92,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Conversas este mês"
-          value={`${conversationsThisMonth} / 100`}
+          value={conversationsLimit !== null ? `${conversationsThisMonth} / ${conversationsLimit}` : String(conversationsThisMonth)}
           subtitle="do limite do plano"
           icon={MessageSquare}
           variant="default"

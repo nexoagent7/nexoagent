@@ -47,6 +47,20 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-1.5">
+                <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">
+                  Nome da empresa
+                </label>
+                <Input
+                  id="company_name"
+                  name="company_name"
+                  type="text"
+                  required
+                  placeholder="Ex: Livraria Esperança"
+                  disabled={pending}
+                />
+              </div>
+
+              <div className="space-y-1.5">
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                   E-mail
                 </label>

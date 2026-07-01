@@ -60,6 +60,7 @@ type AgentConfigRow = {
 
 type CompanyRow = {
   manager_whatsapp: string | null
+  plans: { conversations_limit: number | null } | { conversations_limit: number | null }[] | null
 }
 
 type ConversationRow = {
@@ -241,13 +242,18 @@ async function handleMessage(
         .single(),
       admin
         .from('companies')
-        .select('manager_whatsapp')
+        .select('manager_whatsapp, plans(conversations_limit)')
         .eq('id', company_id)
         .single(),
     ])
 
     const agent = agentData as AgentConfigRow | null
-    const managerWhatsapp = (companyData as CompanyRow | null)?.manager_whatsapp ?? null
+    const company = companyData as CompanyRow | null
+    const managerWhatsapp = company?.manager_whatsapp ?? null
+    const rawPlans = company?.plans
+    const conversationsLimit: number | null = rawPlans
+      ? (Array.isArray(rawPlans) ? rawPlans[0]?.conversations_limit : rawPlans.conversations_limit) ?? null
+      : null
 
     // 3. Upsert conversation (unique on company_id + remote_jid)
     const now = new Date().toISOString()
@@ -308,10 +314,34 @@ async function handleMessage(
 
     const history = (historyData ?? []) as MessageRow[]
 
-    // 7. Build system prompt
+    // 7. Check plan conversation limit before calling Groq
+    if (conversationsLimit !== null) {
+      const startOfMonth = new Date()
+      startOfMonth.setUTCDate(1)
+      startOfMonth.setUTCHours(0, 0, 0, 0)
+
+      const { count: convCount } = await admin
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', company_id)
+        .gte('created_at', startOfMonth.toISOString())
+
+      if ((convCount ?? 0) >= conversationsLimit) {
+        console.warn('[agent] limite de conversas atingido:', convCount, '/', conversationsLimit)
+        const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
+        await sendEvolutionText(
+          instanceName,
+          phone,
+          'Nosso atendimento está temporariamente indisponível. Entre em contato diretamente com a empresa.'
+        )
+        return
+      }
+    }
+
+    // 8. Build system prompt
     const systemPrompt = buildSystemPrompt(agent)
 
-    // 8. Call Groq
+    // 9. Call Groq
     const groqMessages: GroqChatMessage[] = [
       { role: 'system', content: systemPrompt },
       ...history.map((m) => ({ role: m.role, content: m.content })),
