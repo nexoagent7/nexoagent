@@ -293,15 +293,16 @@ async function handleMessage(
       return
     }
 
-    // 6. Fetch last 20 messages for history
+    // 6. Fetch last 20 messages for history (mais recentes primeiro, depois reordena
+    //    para cronológica — .order(asc).limit() pegaria as mais ANTIGAS, não as últimas)
     const { data: historyData } = await admin
       .from('messages')
       .select('role, content')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(10)
+      .order('created_at', { ascending: false })
+      .limit(20)
 
-    const history = (historyData ?? []) as MessageRow[]
+    const history = ((historyData ?? []) as MessageRow[]).reverse()
 
     // 7. Check plan conversation limit before calling Groq
     if (conversationsLimit !== null) {
