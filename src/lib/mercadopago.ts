@@ -44,6 +44,12 @@ export async function createPreapproval(params: PreapprovalParams): Promise<Prea
 
   if (!res.ok) {
     const body = await res.text()
+    console.error('[MP createPreapproval] erro na API:', {
+      status:  res.status,
+      headers: Object.fromEntries(res.headers.entries()),
+      body,
+      params:  { ...params, companyId: params.companyId.slice(0, 8) + '…' },
+    })
     throw new Error(`MP createPreapproval error ${res.status}: ${body}`)
   }
 
