@@ -98,7 +98,7 @@ export default async function DashboardPage() {
         .from('conversations')
         .select('id', { count: 'exact', head: true })
         .eq('company_id', profile.company_id)
-        .gte('created_at', startOfMonth.toISOString()),
+        .gte('last_message_at', startOfMonth.toISOString()),
       admin
         .from('companies')
         .select('plans(name, conversations_limit)')
