@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendEvolutionText } from '@/lib/evolution'
 
 // ─── Evolution API v2 — messages.upsert payload ───────────────────────────────
 
@@ -177,36 +178,6 @@ async function callGroq(messages: GroqChatMessage[]): Promise<GroqResult> {
   return { content: json.choices[0]?.message?.content?.trim() ?? null, rateLimited: false }
 }
 
-async function sendEvolutionText(
-  instanceName: string,
-  phone: string,
-  text: string
-): Promise<void> {
-  const baseUrl = process.env.EVOLUTION_API_URL
-  const apiKey  = process.env.EVOLUTION_API_KEY
-
-  if (!baseUrl || !apiKey) {
-    console.error('[agent] Evolution API não configurada')
-    return
-  }
-
-  const res = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: apiKey,
-    },
-    body: JSON.stringify({ number: phone, text }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('[agent] Evolution sendText error', res.status, err)
-  } else {
-    console.log('[agent] mensagem enviada para', phone)
-  }
-}
-
 // ─── Async message processor (fire-and-forget) ────────────────────────────────
 
 async function handleMessage(
@@ -255,8 +226,19 @@ async function handleMessage(
       ? (Array.isArray(rawPlans) ? rawPlans[0]?.conversations_limit : rawPlans.conversations_limit) ?? null
       : null
 
-    // 3. Upsert conversation (unique on company_id + remote_jid)
+    // 3. Upsert conversation (unique on company_id + remote_jid) — preserva o status atual
+    //    (ex.: 'escalated') em vez de resetar para 'open' a cada mensagem recebida.
     const now = new Date().toISOString()
+
+    const { data: existingConv } = await admin
+      .from('conversations')
+      .select('status')
+      .eq('company_id', company_id)
+      .eq('remote_jid', remoteJid)
+      .maybeSingle()
+
+    const conversationStatus = (existingConv as { status: string } | null)?.status ?? 'open'
+
     const { data: convData, error: convErr } = await admin
       .from('conversations')
       .upsert(
@@ -264,12 +246,12 @@ async function handleMessage(
           company_id,
           remote_jid:      remoteJid,
           contact_name:    contactName,
-          status:          'open',
+          status:          conversationStatus,
           last_message_at: now,
         },
         { onConflict: 'company_id,remote_jid' }
       )
-      .select('id')
+      .select('id, status')
       .single()
 
     if (convErr || !convData) {
@@ -277,7 +259,7 @@ async function handleMessage(
       return
     }
 
-    const { id: conversationId } = convData as ConversationRow
+    const { id: conversationId, status: convStatus } = convData as ConversationRow & { status: string }
 
     // 4. Deduplicate: ignora se já processamos este messageId
     const { data: existing } = await admin
@@ -301,6 +283,13 @@ async function handleMessage(
 
     if (msgErr) {
       console.error('[agent] erro ao salvar mensagem do usuário:', msgErr.message)
+      return
+    }
+
+    // 5a. Conversa escalada para humano: mensagem do cliente já foi salva acima,
+    //     mas a IA fica bloqueada de responder até o gestor devolver para 'open'.
+    if (convStatus === 'escalated') {
+      console.log('[agent] conversa escalada — IA bloqueada, sem resposta automática')
       return
     }
 

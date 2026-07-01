@@ -11,9 +11,9 @@ import {
   useDraggable,
 } from '@dnd-kit/core'
 import type { DragStartEvent, DragEndEvent, UniqueIdentifier } from '@dnd-kit/core'
-import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw } from 'lucide-react'
+import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { closeConversation, escalateConversation, returnToAI } from './actions'
+import { closeConversation, escalateConversation, returnToAI, sendManagerMessage } from './actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -259,15 +259,25 @@ function ConvPanel({
 }) {
   const [isPending, setIsPending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [messageText, setMessageText] = useState('')
+  const [extraMessages, setExtraMessages] = useState<MessageData[]>([])
+  const [isSending, setIsSending] = useState(false)
   const chatRef = useRef<HTMLDivElement>(null)
   const isOpen = conv !== null
 
+  const allMessages = conv ? [...conv.messages, ...extraMessages] : []
+
   useEffect(() => {
     setActionError(null)
+    setMessageText('')
+    setExtraMessages([])
+  }, [conv?.id])
+
+  useEffect(() => {
     if (conv && chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight
     }
-  }, [conv?.id])
+  }, [conv?.id, allMessages.length])
 
   async function runAction(fn: (id: string) => Promise<{ error?: string; success?: boolean }>) {
     if (!conv || isPending) return
@@ -280,6 +290,34 @@ function ConvPanel({
     } else {
       onClose()
     }
+  }
+
+  async function handleSend() {
+    if (!conv || isSending) return
+    const trimmed = messageText.trim()
+    if (!trimmed) return
+
+    setActionError(null)
+    setIsSending(true)
+    const result = await sendManagerMessage(conv.id, trimmed)
+    setIsSending(false)
+
+    if (result.error) {
+      setActionError(result.error)
+      return
+    }
+
+    setExtraMessages(prev => [
+      ...prev,
+      {
+        id:              `local-${Date.now()}`,
+        conversation_id: conv.id,
+        role:            'assistant',
+        content:         trimmed,
+        created_at:      new Date().toISOString(),
+      },
+    ])
+    setMessageText('')
   }
 
   const isClosed    = conv?.status === 'closed'
@@ -333,13 +371,13 @@ function ConvPanel({
 
             {/* Messages */}
             <div ref={chatRef} className="flex-1 overflow-y-auto space-y-3 px-4 py-4">
-              {conv.messages.length === 0 ? (
+              {allMessages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-12 text-center">
                   <Bot className="h-8 w-8 text-foreground-secondary/30" />
                   <p className="mt-2 text-sm text-foreground-secondary">Nenhuma mensagem ainda</p>
                 </div>
               ) : (
-                conv.messages.map(msg => (
+                allMessages.map(msg => (
                   <div
                     key={msg.id}
                     className={`flex ${msg.role === 'assistant' ? 'justify-end' : 'justify-start'}`}
@@ -382,7 +420,35 @@ function ConvPanel({
                   Conversa encerrada
                 </p>
               ) : (
-                <div className="flex gap-2">
+                <>
+                  {isEscalated && (
+                    <div className="flex gap-2">
+                      <textarea
+                        value={messageText}
+                        onChange={e => setMessageText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            void handleSend()
+                          }
+                        }}
+                        placeholder="Digite sua mensagem para o cliente…"
+                        rows={2}
+                        disabled={isSending}
+                        className="flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground-secondary focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+                      />
+                      <Button
+                        size="sm"
+                        className="gap-1.5 self-end"
+                        disabled={isSending || !messageText.trim()}
+                        onClick={() => void handleSend()}
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        {isSending ? 'Enviando…' : 'Enviar'}
+                      </Button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
                   {!isEscalated && (
                     <Button
                       variant="outline"
@@ -416,7 +482,8 @@ function ConvPanel({
                     <CheckCircle className="h-3.5 w-3.5" />
                     {isPending ? 'Salvando…' : 'Marcar como Finalizado'}
                   </Button>
-                </div>
+                  </div>
+                </>
               )}
             </div>
           </>
