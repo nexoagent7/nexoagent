@@ -64,10 +64,6 @@ type CompanyRow = {
   plans: { conversations_limit: number | null } | { conversations_limit: number | null }[] | null
 }
 
-type ConversationRow = {
-  id: string
-}
-
 type MessageRow = {
   role: 'user' | 'assistant'
   content: string
@@ -226,40 +222,65 @@ async function handleMessage(
       ? (Array.isArray(rawPlans) ? rawPlans[0]?.conversations_limit : rawPlans.conversations_limit) ?? null
       : null
 
-    // 3. Upsert conversation (unique on company_id + remote_jid) — preserva o status atual
-    //    (ex.: 'escalated') em vez de resetar para 'open' a cada mensagem recebida.
+    // 3. Reutiliza a conversa mais recente deste remote_jid, exceto se ela estiver
+    //    'closed' — nesse caso, uma nova mensagem inicia um NOVO atendimento em vez
+    //    de reabrir o antigo (uma conversa encerrada não deve bloquear a próxima).
     const now = new Date().toISOString()
 
-    const { data: existingConv } = await admin
+    const { data: recentConvData } = await admin
       .from('conversations')
-      .select('status')
+      .select('id, status')
       .eq('company_id', company_id)
       .eq('remote_jid', remoteJid)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
-    const conversationStatus = (existingConv as { status: string } | null)?.status ?? 'open'
+    const recentConv = recentConvData as { id: string; status: string } | null
 
-    const { data: convData, error: convErr } = await admin
-      .from('conversations')
-      .upsert(
-        {
+    let conversationId: string
+    let convStatus: string
+
+    if (recentConv && recentConv.status !== 'closed') {
+      // Conversa ativa (open/escalated) — reaproveita, preservando o status
+      const { data: updated, error: updateErr } = await admin
+        .from('conversations')
+        .update({ contact_name: contactName, last_message_at: now })
+        .eq('id', recentConv.id)
+        .select('id, status')
+        .single()
+
+      if (updateErr || !updated) {
+        console.error('[agent] erro ao atualizar conversation:', updateErr?.message)
+        return
+      }
+
+      const u = updated as { id: string; status: string }
+      conversationId = u.id
+      convStatus = u.status
+    } else {
+      // Nenhuma conversa ainda, ou a última está 'closed' — inicia um novo atendimento
+      const { data: created, error: insertErr } = await admin
+        .from('conversations')
+        .insert({
           company_id,
           remote_jid:      remoteJid,
           contact_name:    contactName,
-          status:          conversationStatus,
+          status:          'open',
           last_message_at: now,
-        },
-        { onConflict: 'company_id,remote_jid' }
-      )
-      .select('id, status')
-      .single()
+        })
+        .select('id, status')
+        .single()
 
-    if (convErr || !convData) {
-      console.error('[agent] erro ao upsert conversation:', convErr?.message)
-      return
+      if (insertErr || !created) {
+        console.error('[agent] erro ao criar conversation:', insertErr?.message)
+        return
+      }
+
+      const c = created as { id: string; status: string }
+      conversationId = c.id
+      convStatus = c.status
     }
-
-    const { id: conversationId, status: convStatus } = convData as ConversationRow & { status: string }
 
     // 4. Deduplicate: ignora se já processamos este messageId
     const { data: existing } = await admin
