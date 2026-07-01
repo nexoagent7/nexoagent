@@ -3,7 +3,7 @@ import { updateSession } from '@/lib/supabase/middleware'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const PUBLIC_ROUTES = ['/', '/login', '/register']
-const PUBLIC_PREFIXES = ['/api/whatsapp/webhook']
+const PUBLIC_PREFIXES = ['/api/whatsapp/webhook', '/api/cron']
 const MASTER_PREFIX = '/master'
 const DASHBOARD_PREFIX = '/dashboard'
 
