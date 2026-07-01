@@ -11,7 +11,7 @@ import {
   useDraggable,
 } from '@dnd-kit/core'
 import type { DragStartEvent, DragEndEvent, UniqueIdentifier } from '@dnd-kit/core'
-import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw, Send, Clock3 } from 'lucide-react'
+import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw, Send, Clock3, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { closeConversation, escalateConversation, markPending, returnToAI, sendManagerMessage } from './actions'
 
@@ -45,6 +45,8 @@ interface KanbanBoardProps {
   escalated: ConversationData[]
   pending: ConversationData[]
   closed: ConversationData[]
+  kanbanColumns: number
+  humanHandoff: boolean
 }
 
 // ─── Column config ────────────────────────────────────────────────────────────
@@ -98,18 +100,33 @@ const COLUMNS: ColumnDef[] = [
   },
 ]
 
-// Transições permitidas via drag-and-drop: só avança no fluxo (ou vai direto pra
-// Finalizado). Mover pra trás continua disponível só pelos botões do painel.
-const ALLOWED_TRANSITIONS: Record<ColumnKey, ColumnKey[]> = {
-  ia:        ['escalated', 'closed'],
-  escalated: ['pending', 'closed'],
-  pending:   ['closed'],
-  closed:    [],
-}
-
 const COL_TITLE = Object.fromEntries(
   COLUMNS.map(c => [c.key, c.title])
 ) as Record<ColumnKey, string>
+
+// ─── Plan-based column filtering ──────────────────────────────────────────────
+
+function getVisibleColumnKeys(kanbanColumns: number): ColumnKey[] {
+  if (kanbanColumns <= 2) return ['ia', 'closed']
+  if (kanbanColumns === 3) return ['ia', 'escalated', 'closed']
+  return ['ia', 'escalated', 'pending', 'closed']
+}
+
+function getAllowedTransitions(visibleKeys: ColumnKey[]): Record<ColumnKey, ColumnKey[]> {
+  const visible = new Set(visibleKeys)
+  const base: Record<ColumnKey, ColumnKey[]> = {
+    ia:        ['escalated', 'closed'],
+    escalated: ['pending', 'closed'],
+    pending:   ['closed'],
+    closed:    [],
+  }
+  return {
+    ia:        base.ia.filter(k => visible.has(k)),
+    escalated: base.escalated.filter(k => visible.has(k)),
+    pending:   base.pending.filter(k => visible.has(k)),
+    closed:    [],
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -157,7 +174,6 @@ function ConvCard({
     <div
       className={`w-full rounded-xl border border-border bg-background p-3 shadow-sm transition-shadow hover:shadow-md ${muted ? 'opacity-30' : ''}`}
     >
-      {/* Drag handle row */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} />
@@ -172,11 +188,9 @@ function ConvCard({
           {relativeTime(conv.last_message_at ?? conv.created_at)}
         </span>
       </div>
-      {/* Preview */}
       <p className="mt-1.5 line-clamp-2 text-xs text-foreground-secondary">
         {lastPreview(conv)}
       </p>
-      {/* Click target (invisible, covers full card) */}
       <button
         type="button"
         aria-label={`Abrir conversa de ${displayName(conv)}`}
@@ -208,7 +222,6 @@ function DraggableCard({
       {...listeners}
     >
       <ConvCard conv={conv} dot={dot} onClick={onClick} muted={isDragging} />
-      {/* Grab icon overlay */}
       <GripVertical className="pointer-events-none absolute right-3 top-3 h-3.5 w-3.5 text-foreground-secondary/40" />
     </div>
   )
@@ -256,9 +269,11 @@ function statusLabel(conv: ConversationData): { text: string; cls: string } {
 function ConvPanel({
   conv,
   onClose,
+  humanHandoff,
 }: {
   conv: ConversationData | null
   onClose: () => void
+  humanHandoff: boolean
 }) {
   const [isPending, setIsPending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -454,63 +469,72 @@ function ConvPanel({
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
-                  {!isEscalated && !isAwaitingAction && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1 gap-1.5 text-xs"
-                      disabled={isPending}
-                      onClick={() => runAction(escalateConversation)}
-                    >
-                      <PhoneCall className="h-3.5 w-3.5" />
-                      Assumir
-                    </Button>
-                  )}
-                  {isEscalated && (
-                    <>
+                    {!isEscalated && !isAwaitingAction && (
+                      humanHandoff ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1.5 text-xs"
+                          disabled={isPending}
+                          onClick={() => runAction(escalateConversation)}
+                        >
+                          <PhoneCall className="h-3.5 w-3.5" />
+                          Assumir
+                        </Button>
+                      ) : (
+                        <div className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border px-3 py-2">
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-foreground-secondary" />
+                          <span className="text-xs text-foreground-secondary">
+                            Disponível a partir do plano Semente
+                          </span>
+                        </div>
+                      )
+                    )}
+                    {isEscalated && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1.5 text-xs"
+                          disabled={isPending}
+                          onClick={() => runAction(returnToAI)}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Voltar p/ IA
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-1.5 text-xs"
+                          disabled={isPending}
+                          onClick={() => runAction(markPending)}
+                        >
+                          <Clock3 className="h-3.5 w-3.5" />
+                          Ag. Ação
+                        </Button>
+                      </>
+                    )}
+                    {isAwaitingAction && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="flex-1 gap-1.5 text-xs"
                         disabled={isPending}
-                        onClick={() => runAction(returnToAI)}
+                        onClick={() => runAction(escalateConversation)}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Voltar p/ IA
+                        Voltar p/ Humano
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 gap-1.5 text-xs"
-                        disabled={isPending}
-                        onClick={() => runAction(markPending)}
-                      >
-                        <Clock3 className="h-3.5 w-3.5" />
-                        Ag. Ação
-                      </Button>
-                    </>
-                  )}
-                  {isAwaitingAction && (
+                    )}
                     <Button
-                      variant="outline"
                       size="sm"
                       className="flex-1 gap-1.5 text-xs"
                       disabled={isPending}
-                      onClick={() => runAction(escalateConversation)}
+                      onClick={() => runAction(closeConversation)}
                     >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      Voltar p/ Humano
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      {isPending ? 'Salvando…' : 'Finalizar'}
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    className="flex-1 gap-1.5 text-xs"
-                    disabled={isPending}
-                    onClick={() => runAction(closeConversation)}
-                  >
-                    <CheckCircle className="h-3.5 w-3.5" />
-                    {isPending ? 'Salvando…' : 'Finalizar'}
-                  </Button>
                   </div>
                 </>
               )}
@@ -535,14 +559,17 @@ function Toast({ message }: { message: string | null }) {
 
 // ─── KanbanBoard ──────────────────────────────────────────────────────────────
 
-export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps) {
+export function KanbanBoard({ ia, escalated, pending, closed, kanbanColumns, humanHandoff }: KanbanBoardProps) {
   const [columns, setColumns] = useState<ColumnsState>({ ia, escalated, pending, closed })
   const [selected, setSelected] = useState<ConversationData | null>(null)
   const [dragging, setDragging] = useState<{ conv: ConversationData; dot: string; sourceKey: ColumnKey } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Sync when server re-renders after revalidatePath
+  const visibleColumnKeys  = getVisibleColumnKeys(kanbanColumns)
+  const visibleColumns     = COLUMNS.filter(c => visibleColumnKeys.includes(c.key))
+  const allowedTransitions = getAllowedTransitions(visibleColumnKeys)
+
   useEffect(() => {
     setColumns({ ia, escalated, pending, closed })
   }, [ia, escalated, pending, closed])
@@ -555,13 +582,13 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 }, // require 6px movement to start drag
+      activationConstraint: { distance: 6 },
     })
   )
 
   function handleDragStart(event: DragStartEvent) {
     const convId = event.active.id as string
-    for (const col of COLUMNS) {
+    for (const col of visibleColumns) {
       const conv = columns[col.key].find(c => c.id === convId)
       if (conv) {
         setDragging({ conv, dot: col.dotColor, sourceKey: col.key })
@@ -579,21 +606,19 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
     const convId    = active.id as UniqueIdentifier
     const targetKey = over.id as ColumnKey
 
-    if (!COLUMN_KEYS.includes(targetKey)) return
+    if (!visibleColumnKeys.includes(targetKey)) return
 
-    // Find source column
     let sourceKey: ColumnKey | null = null
     let sourceConv: ConversationData | null = null
 
-    for (const key of COLUMN_KEYS) {
+    for (const key of visibleColumnKeys) {
       const found = columns[key].find(c => c.id === convId)
       if (found) { sourceKey = key; sourceConv = found; break }
     }
 
     if (!sourceKey || !sourceConv || sourceKey === targetKey) return
 
-    // Fluxo linear: só permite avançar (ver ALLOWED_TRANSITIONS) ou ir direto pra Finalizado
-    if (!ALLOWED_TRANSITIONS[sourceKey].includes(targetKey)) {
+    if (!allowedTransitions[sourceKey].includes(targetKey)) {
       const sourceTitle = COL_TITLE[sourceKey]
       const targetTitle = COL_TITLE[targetKey]
       showToast(`Não é possível mover de "${sourceTitle}" para "${targetTitle}" arrastando. Use os botões no painel da conversa.`)
@@ -615,14 +640,12 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
       targetKey === 'pending'   ? markPending           :
       /* ia */                    returnToAI
 
-    // Optimistic update
     setColumns(prev => ({
       ...prev,
       [fromKey]:   prev[fromKey].filter(c => c.id !== convId),
       [targetKey]: [{ ...movedConv, status: newStatus }, ...prev[targetKey]],
     }))
 
-    // Background action — revert on error
     void (async () => {
       const result = await action(String(convId))
       if (result.error) {
@@ -649,7 +672,7 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
         onDragCancel={handleDragCancel}
       >
         <div className="flex h-full w-full gap-4 pb-4">
-          {COLUMNS.map(col => {
+          {visibleColumns.map(col => {
             const items = columns[col.key]
             return (
               <div key={col.key} className="flex h-full min-w-0 flex-1 flex-col gap-3">
@@ -673,7 +696,7 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
                 {/* Droppable area */}
                 <DroppableColumn
                   columnKey={col.key}
-                  isValidTarget={!dragging || ALLOWED_TRANSITIONS[dragging.sourceKey].includes(col.key)}
+                  isValidTarget={!dragging || allowedTransitions[dragging.sourceKey].includes(col.key)}
                 >
                   {items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center">
@@ -695,7 +718,6 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
           })}
         </div>
 
-        {/* Drag overlay — follows cursor */}
         <DragOverlay dropAnimation={null}>
           {dragging && (
             <div className="w-72 rotate-1 scale-105 cursor-grabbing shadow-2xl">
@@ -709,7 +731,7 @@ export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps
         </DragOverlay>
       </DndContext>
 
-      <ConvPanel conv={selected} onClose={() => setSelected(null)} />
+      <ConvPanel conv={selected} onClose={() => setSelected(null)} humanHandoff={humanHandoff} />
       <Toast message={toast} />
     </>
   )

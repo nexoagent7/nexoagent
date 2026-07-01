@@ -10,6 +10,15 @@ type UserProfile = {
   company_id: string | null
 }
 
+type PlanFeatures = {
+  kanban_columns: number
+  human_handoff: boolean
+}
+
+type CompanyRow = {
+  plans: { features: PlanFeatures } | { features: PlanFeatures }[] | null
+}
+
 type ConversationRow = {
   id: string
   remote_jid: string
@@ -66,17 +75,32 @@ export default async function KanbanPage() {
     )
   }
 
-  // Fetch all conversations for the company
-  const { data: convData } = await admin
-    .from('conversations')
-    .select('id, remote_jid, contact_name, status, last_message_at, created_at')
-    .eq('company_id', companyId)
-    .order('last_message_at', { ascending: false, nullsFirst: false })
+  const [{ data: companyData }, { data: convData }] = await Promise.all([
+    admin
+      .from('companies')
+      .select('plans(features)')
+      .eq('id', companyId)
+      .single(),
+    admin
+      .from('conversations')
+      .select('id, remote_jid, contact_name, status, last_message_at, created_at')
+      .eq('company_id', companyId)
+      .order('last_message_at', { ascending: false, nullsFirst: false }),
+  ])
+
+  // Extract plan features with safe fallbacks
+  const company = companyData as unknown as CompanyRow | null
+  const rawPlan = company?.plans
+  const planFeatures = rawPlan
+    ? (Array.isArray(rawPlan) ? rawPlan[0]?.features : rawPlan.features)
+    : null
+
+  const kanbanColumns: number   = planFeatures?.kanban_columns ?? 4
+  const humanHandoff: boolean   = planFeatures?.human_handoff  ?? true
 
   const convRows = (convData ?? []) as ConversationRow[]
   const convIds = convRows.map(c => c.id)
 
-  // Fetch all messages for these conversations in one query
   let msgRows: MessageRow[] = []
   if (convIds.length > 0) {
     const { data: msgData } = await admin
@@ -88,7 +112,6 @@ export default async function KanbanPage() {
     msgRows = (msgData ?? []) as MessageRow[]
   }
 
-  // Group messages by conversation_id
   const msgsByConv = new Map<string, MessageRow[]>()
   for (const msg of msgRows) {
     const bucket = msgsByConv.get(msg.conversation_id) ?? []
@@ -96,7 +119,6 @@ export default async function KanbanPage() {
     msgsByConv.set(msg.conversation_id, bucket)
   }
 
-  // Build typed ConversationData objects
   const conversations: ConversationData[] = convRows.map(conv => {
     const msgs = msgsByConv.get(conv.id) ?? []
     const typedMsgs: MessageData[] = msgs.map(m => ({
@@ -117,7 +139,6 @@ export default async function KanbanPage() {
     }
   })
 
-  // Classify into kanban columns
   const ia:        ConversationData[] = []
   const escalated: ConversationData[] = []
   const pending:   ConversationData[] = []
@@ -145,7 +166,14 @@ export default async function KanbanPage() {
       </div>
 
       <div className="min-h-0 flex-1">
-        <KanbanBoard ia={ia} escalated={escalated} pending={pending} closed={closed} />
+        <KanbanBoard
+          ia={ia}
+          escalated={escalated}
+          pending={pending}
+          closed={closed}
+          kanbanColumns={kanbanColumns}
+          humanHandoff={humanHandoff}
+        />
       </div>
     </div>
   )

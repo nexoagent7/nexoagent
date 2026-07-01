@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Bot, MessageSquare, Settings, Smartphone, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { LayoutDashboard, Bot, MessageSquare, Settings, Smartphone, CreditCard, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const SIDEBAR_COLLAPSED_KEY = 'nexoagent_sidebar_collapsed'
@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Início',        href: '/dashboard',          icon: LayoutDashboard },
   { label: 'Meu Agente',    href: '/dashboard/agent',    icon: Bot },
   { label: 'WhatsApp',      href: '/dashboard/whatsapp', icon: Smartphone },
+  { label: 'Planos',        href: '/dashboard/planos',   icon: CreditCard },
   { label: 'Atendimentos',  href: '/dashboard/kanban',   icon: MessageSquare },
   { label: 'Configurações', href: '/dashboard/settings', icon: Settings },
 ]
