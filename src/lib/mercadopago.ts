@@ -28,7 +28,6 @@ export async function createPreapproval(params: PreapprovalParams): Promise<Prea
     headers: authHeaders(),
     body: JSON.stringify({
       reason:               params.reason,
-      payer_email:          params.payerEmail,
       external_reference:   `${params.companyId}|${params.planId}`,
       back_url:             `${appUrl}/dashboard/planos?status=sucesso`,
       notification_url:     `${appUrl}/api/webhooks/mercadopago`,
