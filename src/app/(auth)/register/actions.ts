@@ -68,9 +68,11 @@ export async function registerAction(
   }
 
   // 3. Criar empresa
+  const companySlug = companyName.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+
   const { data: companyData, error: companyError } = await admin
     .from('companies')
-    .insert({ name: companyName, plan_id: (planData as { id: string }).id })
+    .insert({ name: companyName, slug: companySlug, plan_id: (planData as { id: string }).id })
     .select('id')
     .single()
 
