@@ -20,73 +20,71 @@ export type PreapprovalResult = {
   initPoint: string
 }
 
+// Cria uma preferência de Checkout Pro (pagamento único)
 export async function createPreapproval(params: PreapprovalParams): Promise<PreapprovalResult> {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
-  const res = await fetch(`${MP_API}/preapproval`, {
+  const res = await fetch(`${MP_API}/checkout/preferences`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
-      reason:               params.reason,
-      external_reference:   `${params.companyId}|${params.planId}`,
-      back_url:             `${appUrl}/dashboard/planos?status=sucesso`,
-      notification_url:     `${appUrl}/api/webhooks/mercadopago`,
-      status:               'pending',
-      auto_recurring: {
-        frequency:          1,
-        frequency_type:     'months',
-        transaction_amount: params.amountBrl,
-        currency_id:        'BRL',
+      items: [
+        {
+          title:      params.reason,
+          quantity:   1,
+          unit_price: params.amountBrl,
+          currency_id: 'BRL',
+        },
+      ],
+      external_reference: `${params.companyId}|${params.planId}`,
+      back_urls: {
+        success: `${appUrl}/dashboard/planos?status=sucesso`,
+        failure: `${appUrl}/dashboard/planos?status=erro`,
+        pending: `${appUrl}/dashboard/planos?status=pendente`,
       },
+      auto_return:      'approved',
+      notification_url: `${appUrl}/api/webhooks/mercadopago`,
     }),
   })
 
   if (!res.ok) {
     const body = await res.text()
-    console.error('[MP createPreapproval] erro na API:', {
+    console.error('[MP createPreference] erro na API:', {
       status:  res.status,
       headers: Object.fromEntries(res.headers.entries()),
       body,
       params:  { ...params, companyId: params.companyId.slice(0, 8) + '…' },
     })
-    throw new Error(`MP createPreapproval error ${res.status}: ${body}`)
+    throw new Error(`MP createPreference error ${res.status}: ${body}`)
   }
 
   const data = await res.json()
   return { id: data.id, initPoint: data.init_point }
 }
 
-export type PreapprovalStatus =
-  | 'pending'
-  | 'authorized'
-  | 'paused'
-  | 'cancelled'
+// ─── Payment (Checkout Pro webhook) ───────────────────────────────────────────
 
-export type PreapprovalDetails = {
+export type PaymentDetails = {
   id: string
-  status: PreapprovalStatus
+  status: string               // approved | rejected | pending | refunded | ...
   externalReference: string | null
-  planId: string | null       // id do plano no banco (external_reference)
-  payerEmail: string | null
 }
 
-export async function fetchPreapproval(preapprovalId: string): Promise<PreapprovalDetails> {
-  const res = await fetch(`${MP_API}/preapproval/${preapprovalId}`, {
+export async function fetchPayment(paymentId: string): Promise<PaymentDetails> {
+  const res = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
     headers: authHeaders(),
     cache: 'no-store',
   })
 
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`MP fetchPreapproval error ${res.status}: ${body}`)
+    throw new Error(`MP fetchPayment error ${res.status}: ${body}`)
   }
 
   const data = await res.json()
   return {
-    id:                data.id,
+    id:                String(data.id),
     status:            data.status,
     externalReference: data.external_reference ?? null,
-    planId:            data.external_reference ?? null,
-    payerEmail:        data.payer_email ?? null,
   }
 }
