@@ -15,8 +15,8 @@ type MessageKey = {
 type MessageContent = {
   conversation?: string
   extendedTextMessage?: { text: string }
-  imageMessage?: { caption?: string; mimetype: string }
-  audioMessage?: { mimetype: string; seconds: number }
+  imageMessage?: { caption?: string; mimetype: string; url?: string }
+  audioMessage?: { mimetype: string; seconds: number; url?: string }
   videoMessage?: { caption?: string; mimetype: string }
   documentMessage?: { title?: string; mimetype: string }
   stickerMessage?: { isAnimated: boolean }
@@ -34,6 +34,7 @@ type EvolutionMessage = {
   instanceId: string
   source?: string
   status?: string
+  mediaUrl?: string  // Evolution API v2 expõe a URL aqui em alguns eventos
 }
 
 type EvolutionWebhookPayload = {
@@ -111,6 +112,15 @@ function detectMediaType(message?: MessageContent): MediaType {
   if (message.imageMessage) return 'image'
   if (message.audioMessage) return 'audio'
   return null
+}
+
+function extractMediaUrl(msg: EvolutionMessage): string | null {
+  return (
+    msg.mediaUrl ??
+    msg.message?.imageMessage?.url ??
+    msg.message?.audioMessage?.url ??
+    null
+  )
 }
 
 function buildSystemPrompt(agent: AgentConfigRow | null): string {
@@ -191,7 +201,8 @@ async function handleMessage(
   contactName: string | null,
   text: string,
   messageId: string,
-  mediaType: MediaType
+  mediaType: MediaType,
+  mediaUrl: string | null
 ): Promise<void> {
   try {
     const admin = createAdminClient()
@@ -310,6 +321,7 @@ async function handleMessage(
       role:                 'user',
       content:              text,
       whatsapp_message_id:  messageId,
+      media_url:            mediaUrl ?? null,
     })
 
     if (msgErr) {
@@ -475,11 +487,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const mediaLabel = mediaType === 'image' ? '[Imagem recebida]' : mediaType === 'audio' ? '[Áudio recebido]' : null
     const contentToSave = text ?? mediaLabel ?? ''
+    const mediaUrl = extractMediaUrl(msg)
 
     console.log('[webhook] remoteJid:', msg.key.remoteJid)
     console.log('[webhook] pushName:', msg.pushName ?? '—')
     console.log('[webhook] messageType:', msg.messageType)
     console.log('[webhook] text:', contentToSave)
+    console.log('[webhook] mediaUrl:', mediaUrl ?? '—')
     console.log('[webhook] timestamp:', new Date(msg.messageTimestamp * 1000).toISOString())
     console.log('─────────────────────────────────')
 
@@ -490,7 +504,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       msg.pushName ?? null,
       contentToSave,
       msg.key.id,
-      mediaType
+      mediaType,
+      mediaUrl
     ))
   }
 

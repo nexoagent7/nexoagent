@@ -22,6 +22,7 @@ export type MessageData = {
   conversation_id: string
   role: 'user' | 'assistant'
   content: string
+  media_url?: string | null
   created_at: string
 }
 
@@ -414,6 +415,19 @@ function ConvPanel({
                           <Bot className="h-3 w-3 text-[#7BC81E]" />
                           <span className="text-[10px] font-medium text-[#7BC81E]">IA</span>
                         </div>
+                      )}
+                      {msg.media_url && msg.content === '[Imagem recebida]' && (
+                        <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block mb-1">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={msg.media_url}
+                            alt="Imagem recebida"
+                            className="max-h-48 w-auto rounded-lg object-cover cursor-pointer"
+                          />
+                        </a>
+                      )}
+                      {msg.media_url && msg.content === '[Áudio recebido]' && (
+                        <audio controls src={msg.media_url} className="mb-1 w-full" />
                       )}
                       <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
                         {msg.content}

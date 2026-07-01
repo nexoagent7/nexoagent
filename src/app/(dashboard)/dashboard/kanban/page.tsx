@@ -33,6 +33,7 @@ type MessageRow = {
   conversation_id: string
   role: string
   content: string
+  media_url: string | null
   created_at: string
 }
 
@@ -105,7 +106,7 @@ export default async function KanbanPage() {
   if (convIds.length > 0) {
     const { data: msgData } = await admin
       .from('messages')
-      .select('id, conversation_id, role, content, created_at')
+      .select('id, conversation_id, role, content, media_url, created_at')
       .in('conversation_id', convIds)
       .order('created_at', { ascending: true })
 
@@ -126,6 +127,7 @@ export default async function KanbanPage() {
       conversation_id: m.conversation_id,
       role:            m.role === 'assistant' ? 'assistant' : 'user',
       content:         m.content,
+      media_url:       m.media_url ?? null,
       created_at:      m.created_at,
     }))
     return {
