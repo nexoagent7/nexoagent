@@ -11,9 +11,9 @@ import {
   useDraggable,
 } from '@dnd-kit/core'
 import type { DragStartEvent, DragEndEvent, UniqueIdentifier } from '@dnd-kit/core'
-import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw, Send } from 'lucide-react'
+import { X, UserCircle, Bot, PhoneCall, CheckCircle, AlertCircle, GripVertical, RotateCcw, Send, Clock3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { closeConversation, escalateConversation, returnToAI, sendManagerMessage } from './actions'
+import { closeConversation, escalateConversation, markPending, returnToAI, sendManagerMessage } from './actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,15 +35,15 @@ export type ConversationData = {
   messages: MessageData[]
 }
 
-const COLUMN_KEYS = ['novo', 'ia', 'escalated', 'closed'] as const
+const COLUMN_KEYS = ['ia', 'escalated', 'pending', 'closed'] as const
 type ColumnKey = typeof COLUMN_KEYS[number]
 
 type ColumnsState = Record<ColumnKey, ConversationData[]>
 
 interface KanbanBoardProps {
-  novo: ConversationData[]
   ia: ConversationData[]
   escalated: ConversationData[]
+  pending: ConversationData[]
   closed: ConversationData[]
 }
 
@@ -57,20 +57,9 @@ type ColumnDef = {
   badgeText: string
   dotColor: string
   emptyText: string
-  blocked: boolean
 }
 
 const COLUMNS: ColumnDef[] = [
-  {
-    key:         'novo',
-    title:       'Novo',
-    borderColor: '#3B82F6',
-    badgeBg:     '#EFF6FF',
-    badgeText:   '#1D4ED8',
-    dotColor:    '#3B82F6',
-    emptyText:   'Nenhuma conversa nova',
-    blocked:     true,
-  },
   {
     key:         'ia',
     title:       'IA Atendendo',
@@ -79,17 +68,24 @@ const COLUMNS: ColumnDef[] = [
     badgeText:   '#166534',
     dotColor:    '#7BC81E',
     emptyText:   'Nenhuma conversa em atendimento',
-    blocked:     false,
   },
   {
     key:         'escalated',
-    title:       'Aguardando Humano',
+    title:       'Com Humano',
     borderColor: '#F59E0B',
     badgeBg:     '#FFFBEB',
     badgeText:   '#92400E',
     dotColor:    '#F59E0B',
-    emptyText:   'Nenhuma conversa aguardando',
-    blocked:     false,
+    emptyText:   'Nenhuma conversa com humano',
+  },
+  {
+    key:         'pending',
+    title:       'Aguardando Ação',
+    borderColor: '#8B5CF6',
+    badgeBg:     '#F5F3FF',
+    badgeText:   '#6D28D9',
+    dotColor:    '#8B5CF6',
+    emptyText:   'Nenhuma conversa aguardando ação',
   },
   {
     key:         'closed',
@@ -99,13 +95,21 @@ const COLUMNS: ColumnDef[] = [
     badgeText:   '#6B7280',
     dotColor:    '#9CA3AF',
     emptyText:   'Nenhuma conversa finalizada',
-    blocked:     false,
   },
 ]
 
-const COL_BY_KEY = Object.fromEntries(
-  COLUMNS.map(c => [c.key, c])
-) as Record<ColumnKey, ColumnDef>
+// Transições permitidas via drag-and-drop: só avança no fluxo (ou vai direto pra
+// Finalizado). Mover pra trás continua disponível só pelos botões do painel.
+const ALLOWED_TRANSITIONS: Record<ColumnKey, ColumnKey[]> = {
+  ia:        ['escalated', 'closed'],
+  escalated: ['pending', 'closed'],
+  pending:   ['closed'],
+  closed:    [],
+}
+
+const COL_TITLE = Object.fromEntries(
+  COLUMNS.map(c => [c.key, c.title])
+) as Record<ColumnKey, string>
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -214,19 +218,19 @@ function DraggableCard({
 
 function DroppableColumn({
   columnKey,
-  blocked,
+  isValidTarget,
   children,
 }: {
   columnKey: ColumnKey
-  blocked: boolean
+  isValidTarget: boolean
   children: React.ReactNode
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnKey })
 
   const highlight =
-    isOver && !blocked
+    isOver && isValidTarget
       ? 'bg-primary/5 ring-2 ring-inset ring-primary/20'
-      : isOver && blocked
+      : isOver && !isValidTarget
       ? 'bg-red-50 ring-2 ring-inset ring-red-200'
       : ''
 
@@ -243,11 +247,10 @@ function DroppableColumn({
 // ─── Conversation Panel ───────────────────────────────────────────────────────
 
 function statusLabel(conv: ConversationData): { text: string; cls: string } {
-  if (conv.status === 'closed')    return { text: 'Finalizado',         cls: 'bg-gray-100 text-gray-500' }
-  if (conv.status === 'escalated') return { text: 'Aguardando Humano',  cls: 'bg-amber-100 text-amber-700' }
-  if (conv.messages.some(m => m.role === 'assistant'))
-                                   return { text: 'IA Atendendo',       cls: 'bg-green-100 text-green-700' }
-  return                                  { text: 'Novo',               cls: 'bg-blue-100 text-blue-700' }
+  if (conv.status === 'closed')    return { text: 'Finalizado',       cls: 'bg-gray-100 text-gray-500' }
+  if (conv.status === 'escalated') return { text: 'Com Humano',       cls: 'bg-amber-100 text-amber-700' }
+  if (conv.status === 'pending')   return { text: 'Aguardando Ação',  cls: 'bg-violet-100 text-violet-700' }
+  return                                  { text: 'IA Atendendo',     cls: 'bg-green-100 text-green-700' }
 }
 
 function ConvPanel({
@@ -320,9 +323,11 @@ function ConvPanel({
     setMessageText('')
   }
 
-  const isClosed    = conv?.status === 'closed'
-  const isEscalated = conv?.status === 'escalated'
-  const label       = conv ? statusLabel(conv) : null
+  const isClosed         = conv?.status === 'closed'
+  const isEscalated      = conv?.status === 'escalated'
+  const isAwaitingAction = conv?.status === 'pending'
+  const canReply         = isEscalated || isAwaitingAction
+  const label            = conv ? statusLabel(conv) : null
 
   return (
     <div
@@ -421,7 +426,7 @@ function ConvPanel({
                 </p>
               ) : (
                 <>
-                  {isEscalated && (
+                  {canReply && (
                     <div className="flex gap-2">
                       <textarea
                         value={messageText}
@@ -449,7 +454,7 @@ function ConvPanel({
                     </div>
                   )}
                   <div className="flex gap-2">
-                  {!isEscalated && (
+                  {!isEscalated && !isAwaitingAction && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -462,15 +467,39 @@ function ConvPanel({
                     </Button>
                   )}
                   {isEscalated && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 gap-1.5"
+                        disabled={isPending}
+                        onClick={() => runAction(returnToAI)}
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Devolver para IA
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 gap-1.5"
+                        disabled={isPending}
+                        onClick={() => runAction(markPending)}
+                      >
+                        <Clock3 className="h-3.5 w-3.5" />
+                        Aguardando Ação
+                      </Button>
+                    </>
+                  )}
+                  {isAwaitingAction && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="flex-1 gap-1.5"
                       disabled={isPending}
-                      onClick={() => runAction(returnToAI)}
+                      onClick={() => runAction(escalateConversation)}
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      Devolver para IA
+                      Devolver p/ Com Humano
                     </Button>
                   )}
                   <Button
@@ -506,17 +535,17 @@ function Toast({ message }: { message: string | null }) {
 
 // ─── KanbanBoard ──────────────────────────────────────────────────────────────
 
-export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
-  const [columns, setColumns] = useState<ColumnsState>({ novo, ia, escalated, closed })
+export function KanbanBoard({ ia, escalated, pending, closed }: KanbanBoardProps) {
+  const [columns, setColumns] = useState<ColumnsState>({ ia, escalated, pending, closed })
   const [selected, setSelected] = useState<ConversationData | null>(null)
-  const [dragging, setDragging] = useState<{ conv: ConversationData; dot: string } | null>(null)
+  const [dragging, setDragging] = useState<{ conv: ConversationData; dot: string; sourceKey: ColumnKey } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sync when server re-renders after revalidatePath
   useEffect(() => {
-    setColumns({ novo, ia, escalated, closed })
-  }, [novo, ia, escalated, closed])
+    setColumns({ ia, escalated, pending, closed })
+  }, [ia, escalated, pending, closed])
 
   function showToast(msg: string) {
     if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -535,7 +564,7 @@ export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
     for (const col of COLUMNS) {
       const conv = columns[col.key].find(c => c.id === convId)
       if (conv) {
-        setDragging({ conv, dot: col.dotColor })
+        setDragging({ conv, dot: col.dotColor, sourceKey: col.key })
         return
       }
     }
@@ -563,13 +592,11 @@ export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
 
     if (!sourceKey || !sourceConv || sourceKey === targetKey) return
 
-    // "Novo" is always blocked; "IA Atendendo" only accepts cards from "escalated"
-    if (targetKey === 'novo') {
-      showToast('A coluna "Novo" é gerenciada automaticamente pelo sistema.')
-      return
-    }
-    if (targetKey === 'ia' && sourceKey !== 'escalated') {
-      showToast('Só é possível devolver para "IA Atendendo" conversas que estejam em "Aguardando Humano".')
+    // Fluxo linear: só permite avançar (ver ALLOWED_TRANSITIONS) ou ir direto pra Finalizado
+    if (!ALLOWED_TRANSITIONS[sourceKey].includes(targetKey)) {
+      const sourceTitle = COL_TITLE[sourceKey]
+      const targetTitle = COL_TITLE[targetKey]
+      showToast(`Não é possível mover de "${sourceTitle}" para "${targetTitle}" arrastando. Use os botões no painel da conversa.`)
       return
     }
 
@@ -579,11 +606,13 @@ export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
     const newStatus =
       targetKey === 'closed'    ? 'closed'    :
       targetKey === 'escalated' ? 'escalated' :
+      targetKey === 'pending'   ? 'pending'   :
       /* ia */                    'open'
 
     const action =
       targetKey === 'closed'    ? closeConversation    :
       targetKey === 'escalated' ? escalateConversation :
+      targetKey === 'pending'   ? markPending           :
       /* ia */                    returnToAI
 
     // Optimistic update
@@ -619,11 +648,11 @@ export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
-        <div className="flex h-full gap-4 overflow-x-auto pb-4">
+        <div className="flex h-full w-full gap-4 pb-4">
           {COLUMNS.map(col => {
             const items = columns[col.key]
             return (
-              <div key={col.key} className="flex h-full w-72 shrink-0 flex-col gap-3">
+              <div key={col.key} className="flex h-full min-w-0 flex-1 flex-col gap-3">
                 {/* Column header */}
                 <div
                   className="flex shrink-0 items-center justify-between rounded-xl border-l-4 bg-background px-4 py-3 shadow-sm"
@@ -642,7 +671,10 @@ export function KanbanBoard({ novo, ia, escalated, closed }: KanbanBoardProps) {
                 </div>
 
                 {/* Droppable area */}
-                <DroppableColumn columnKey={col.key} blocked={col.blocked}>
+                <DroppableColumn
+                  columnKey={col.key}
+                  isValidTarget={!dragging || ALLOWED_TRANSITIONS[dragging.sourceKey].includes(col.key)}
+                >
                   {items.length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-10 text-center">
                       <p className="text-xs text-foreground-secondary">{col.emptyText}</p>

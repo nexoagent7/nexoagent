@@ -118,9 +118,9 @@ export default async function KanbanPage() {
   })
 
   // Classify into kanban columns
-  const novo:      ConversationData[] = []
   const ia:        ConversationData[] = []
   const escalated: ConversationData[] = []
+  const pending:   ConversationData[] = []
   const closed:    ConversationData[] = []
 
   for (const conv of conversations) {
@@ -128,10 +128,10 @@ export default async function KanbanPage() {
       closed.push(conv)
     } else if (conv.status === 'escalated') {
       escalated.push(conv)
-    } else if (conv.messages.some(m => m.role === 'assistant')) {
-      ia.push(conv)
+    } else if (conv.status === 'pending') {
+      pending.push(conv)
     } else {
-      novo.push(conv)
+      ia.push(conv)
     }
   }
 
@@ -145,7 +145,7 @@ export default async function KanbanPage() {
       </div>
 
       <div className="min-h-0 flex-1">
-        <KanbanBoard novo={novo} ia={ia} escalated={escalated} closed={closed} />
+        <KanbanBoard ia={ia} escalated={escalated} pending={pending} closed={closed} />
       </div>
     </div>
   )

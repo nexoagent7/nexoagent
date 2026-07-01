@@ -104,6 +104,15 @@ function toArray(data: EvolutionMessage | EvolutionMessage[]): EvolutionMessage[
   return Array.isArray(data) ? data : [data]
 }
 
+type MediaType = 'image' | 'audio' | null
+
+function detectMediaType(message?: MessageContent): MediaType {
+  if (!message) return null
+  if (message.imageMessage) return 'image'
+  if (message.audioMessage) return 'audio'
+  return null
+}
+
 function buildSystemPrompt(agent: AgentConfigRow | null): string {
   const styleRules = [
     'PRIORIDADE MÁXIMA: sempre responda diretamente a pergunta que o cliente acabou de fazer. Se ele perguntar o preço, responda o preço. Nunca substitua a resposta direta por uma reapresentação geral do produto ou da lista de livros — isso é uma falha grave.',
@@ -181,7 +190,8 @@ async function handleMessage(
   remoteJid: string,
   contactName: string | null,
   text: string,
-  messageId: string
+  messageId: string,
+  mediaType: MediaType
 ): Promise<void> {
   try {
     const admin = createAdminClient()
@@ -307,10 +317,26 @@ async function handleMessage(
       return
     }
 
-    // 5a. Conversa escalada para humano: mensagem do cliente já foi salva acima,
-    //     mas a IA fica bloqueada de responder até o gestor devolver para 'open'.
-    if (convStatus === 'escalated') {
-      console.log('[agent] conversa escalada — IA bloqueada, sem resposta automática')
+    // 5a. Cliente enviou imagem ou áudio — provável comprovante. O Groq não enxerga
+    //     mídia, então marcamos 'pending' automaticamente (alguém precisa conferir
+    //     manualmente) em vez de tentar responder com a IA.
+    if (mediaType) {
+      await admin
+        .from('conversations')
+        .update({ status: 'pending', last_message_at: new Date().toISOString() })
+        .eq('id', conversationId)
+
+      console.log('[agent] mídia recebida (', mediaType, ') — conversa marcada como pending')
+
+      const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
+      await sendEvolutionText(instanceName, phone, 'Recebemos! Vamos confirmar e te avisamos em breve. 🙏')
+      return
+    }
+
+    // 5b. Conversa escalada ou aguardando ação: mensagem do cliente já foi salva
+    //     acima, mas a IA fica bloqueada de responder até o gestor mudar o status.
+    if (convStatus === 'escalated' || convStatus === 'pending') {
+      console.log('[agent] conversa', convStatus, '— IA bloqueada, sem resposta automática')
       return
     }
 
@@ -444,12 +470,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!msg.key.remoteJid.endsWith('@s.whatsapp.net')) continue
 
     const text = extractText(msg.message)
-    if (!text) continue
+    const mediaType = detectMediaType(msg.message)
+    if (!text && !mediaType) continue
+
+    const mediaLabel = mediaType === 'image' ? '[Imagem recebida]' : mediaType === 'audio' ? '[Áudio recebido]' : null
+    const contentToSave = text ?? mediaLabel ?? ''
 
     console.log('[webhook] remoteJid:', msg.key.remoteJid)
     console.log('[webhook] pushName:', msg.pushName ?? '—')
     console.log('[webhook] messageType:', msg.messageType)
-    console.log('[webhook] text:', text)
+    console.log('[webhook] text:', contentToSave)
     console.log('[webhook] timestamp:', new Date(msg.messageTimestamp * 1000).toISOString())
     console.log('─────────────────────────────────')
 
@@ -458,8 +488,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       payload.instance,
       msg.key.remoteJid,
       msg.pushName ?? null,
-      text,
-      msg.key.id
+      contentToSave,
+      msg.key.id,
+      mediaType
     ))
   }
 

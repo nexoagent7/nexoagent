@@ -56,6 +56,22 @@ export async function escalateConversation(conversationId: string): Promise<Acti
   return { success: true }
 }
 
+export async function markPending(conversationId: string): Promise<ActionResult> {
+  const companyId = await getAuthedCompanyId()
+  if (!companyId) return { error: 'Não autenticado' }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('conversations')
+    .update({ status: 'pending' })
+    .eq('id', conversationId)
+    .eq('company_id', companyId)
+
+  if (error) return { error: 'Erro ao marcar como aguardando ação' }
+  revalidatePath('/dashboard/kanban')
+  return { success: true }
+}
+
 export async function returnToAI(conversationId: string): Promise<ActionResult> {
   const companyId = await getAuthedCompanyId()
   if (!companyId) return { error: 'Não autenticado' }
