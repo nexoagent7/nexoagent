@@ -82,6 +82,11 @@ type GroqApiResponse = {
     message: { role: string; content: string }
     finish_reason: string
   }>
+  usage: {
+    prompt_tokens:     number
+    completion_tokens: number
+    total_tokens:      number
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -160,13 +165,18 @@ function buildSystemPrompt(agent: AgentConfigRow | null): string {
   return parts.join('\n')
 }
 
-type GroqResult = { content: string | null; rateLimited: boolean }
+type GroqResult = {
+  content:           string | null
+  rateLimited:       boolean
+  promptTokens:      number
+  completionTokens:  number
+}
 
 async function callGroq(messages: GroqChatMessage[]): Promise<GroqResult> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
     console.error('[agent] GROQ_API_KEY não configurada')
-    return { content: null, rateLimited: false }
+    return { content: null, rateLimited: false, promptTokens: 0, completionTokens: 0 }
   }
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -186,11 +196,16 @@ async function callGroq(messages: GroqChatMessage[]): Promise<GroqResult> {
   if (!res.ok) {
     const err = await res.text()
     console.error('[agent] Groq error', res.status, err)
-    return { content: null, rateLimited: res.status === 429 }
+    return { content: null, rateLimited: res.status === 429, promptTokens: 0, completionTokens: 0 }
   }
 
   const json = (await res.json()) as GroqApiResponse
-  return { content: json.choices[0]?.message?.content?.trim() ?? null, rateLimited: false }
+  return {
+    content:          json.choices[0]?.message?.content?.trim() ?? null,
+    rateLimited:      false,
+    promptTokens:     json.usage?.prompt_tokens     ?? 0,
+    completionTokens: json.usage?.completion_tokens ?? 0,
+  }
 }
 
 // ─── Async message processor (fire-and-forget) ────────────────────────────────
@@ -399,7 +414,7 @@ async function handleMessage(
     console.log('[agent] system prompt:\n', systemPrompt)
     console.log('[agent] system prompt chars:', systemPrompt.length)
     console.log('[agent] chamando Groq com', groqMessages.length, 'mensagens')
-    const { content: reply, rateLimited } = await callGroq(groqMessages)
+    const { content: reply, rateLimited, promptTokens, completionTokens } = await callGroq(groqMessages)
 
     if (rateLimited) {
       console.warn('[agent] Groq rate limit (429) — enviando mensagem de fallback ao cliente')
@@ -425,6 +440,25 @@ async function handleMessage(
       role:            'assistant',
       content:         cleanReply,
     })
+
+    // 9b. Register token usage for this call
+    const totalTokens = promptTokens + completionTokens
+    const costUsd = (promptTokens * 0.59 + completionTokens * 0.79) / 1_000_000
+
+    await Promise.all([
+      admin.from('token_usage').insert({
+        company_id:        company_id,
+        conversation_id:   conversationId,
+        prompt_tokens:     promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens:      totalTokens,
+        cost_usd:          costUsd,
+      }),
+      admin.rpc('increment_groq_tokens', {
+        company_id_param: company_id,
+        amount:           totalTokens,
+      }),
+    ])
 
     // Update last_message_at + status if transferring
     const conversationUpdate: Record<string, string> = { last_message_at: new Date().toISOString() }

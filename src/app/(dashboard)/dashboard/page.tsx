@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { MessageSquare, TrendingUp, Zap, Wifi } from 'lucide-react'
+import { MessageSquare, TrendingUp, Zap, Wifi, Cpu } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { KpiCard } from '@/components/dashboard/kpi-card'
@@ -87,13 +87,15 @@ export default async function DashboardPage() {
   let conversationsLimit: number | null = null
   let planName = 'Free'
   let recentConversations: ConversationRow[] = []
+  let groqTokensThisMonth = 0
+  let groqCostBrl = 0
 
   if (profile?.company_id) {
     const startOfMonth = new Date()
     startOfMonth.setUTCDate(1)
     startOfMonth.setUTCHours(0, 0, 0, 0)
 
-    const [{ count }, { data: companyData }, { data: convData }] = await Promise.all([
+    const [{ count }, { data: companyData }, { data: convData }, { data: tokenData }] = await Promise.all([
       admin
         .from('conversations')
         .select('id', { count: 'exact', head: true })
@@ -110,6 +112,11 @@ export default async function DashboardPage() {
         .eq('company_id', profile.company_id)
         .order('last_message_at', { ascending: false, nullsFirst: false })
         .limit(5),
+      admin
+        .from('token_usage')
+        .select('total_tokens, cost_usd')
+        .eq('company_id', profile.company_id)
+        .gte('created_at', startOfMonth.toISOString()),
     ])
 
     const company = companyData as unknown as CompanyData | null
@@ -122,8 +129,13 @@ export default async function DashboardPage() {
     planName = plan?.name ?? 'Free'
 
     conversationsThisMonth = count ?? 0
+    recentConversations   = (convData ?? []) as ConversationRow[]
 
-    recentConversations = (convData ?? []) as ConversationRow[]
+    const rows = (tokenData ?? []) as { total_tokens: number; cost_usd: number }[]
+    groqTokensThisMonth = rows.reduce((s, r) => s + r.total_tokens, 0)
+    const totalCostUsd  = rows.reduce((s, r) => s + Number(r.cost_usd), 0)
+    const BRL_PER_USD_WITH_MARGIN = 6.38
+    groqCostBrl = totalCostUsd * BRL_PER_USD_WITH_MARGIN
   }
 
   const progressPct = conversationsLimit && conversationsLimit > 0
@@ -168,6 +180,13 @@ export default async function DashboardPage() {
           subtitle={agentConfig?.agent_name ?? 'Nenhum agente configurado'}
           icon={Wifi}
           variant={agentConfigured ? 'success' : 'warning'}
+        />
+        <KpiCard
+          title="Tokens Groq este mês"
+          value={groqTokensThisMonth.toLocaleString('pt-BR')}
+          subtitle={`R$ ${groqCostBrl.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} estimado`}
+          icon={Cpu}
+          variant="default"
         />
       </div>
 
