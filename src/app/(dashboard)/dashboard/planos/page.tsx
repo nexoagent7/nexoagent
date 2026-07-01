@@ -24,8 +24,8 @@ const PLAN_FEATURES: Record<string, string[]> = {
   free: [
     '10 conversas por mês',
     'Agente IA no WhatsApp',
-    'Kanban 2 colunas (IA + Finalizado)',
-    'Sem handoff humano',
+    'Kanban 3 colunas (+ Com Humano)',
+    'Handoff humano',
   ],
   semente: [
     '100 conversas por mês',
