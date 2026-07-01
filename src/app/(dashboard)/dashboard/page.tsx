@@ -20,7 +20,6 @@ type PlanInfo = {
 }
 
 type CompanyData = {
-  conversations_used_this_month: number
   plans: PlanInfo | PlanInfo[] | null
 }
 
@@ -102,7 +101,7 @@ export default async function DashboardPage() {
         .gte('created_at', startOfMonth.toISOString()),
       admin
         .from('companies')
-        .select('conversations_used_this_month, plans(name, conversations_limit)')
+        .select('plans(name, conversations_limit)')
         .eq('id', profile.company_id)
         .single(),
       admin
@@ -122,9 +121,7 @@ export default async function DashboardPage() {
     conversationsLimit = plan?.conversations_limit ?? null
     planName = plan?.name ?? 'Free'
 
-    const countFromDb = count ?? 0
-    const countFromCompany = company?.conversations_used_this_month ?? 0
-    conversationsThisMonth = Math.max(countFromDb, countFromCompany)
+    conversationsThisMonth = count ?? 0
 
     recentConversations = (convData ?? []) as ConversationRow[]
   }
