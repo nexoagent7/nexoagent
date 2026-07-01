@@ -391,7 +391,7 @@ function ConvPanel({
                       className={`max-w-[78%] rounded-2xl px-3 py-2 ${
                         msg.role === 'assistant'
                           ? 'rounded-br-sm bg-[#7BC81E]/10'
-                          : 'rounded-bl-sm bg-background-secondary'
+                          : 'rounded-bl-sm bg-gray-100'
                       }`}
                     >
                       {msg.role === 'assistant' && (
@@ -453,17 +453,17 @@ function ConvPanel({
                       </Button>
                     </div>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                   {!isEscalated && !isAwaitingAction && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 gap-1.5"
+                      className="flex-1 gap-1.5 text-xs"
                       disabled={isPending}
                       onClick={() => runAction(escalateConversation)}
                     >
                       <PhoneCall className="h-3.5 w-3.5" />
-                      Assumir conversa
+                      Assumir
                     </Button>
                   )}
                   {isEscalated && (
@@ -471,22 +471,22 @@ function ConvPanel({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1.5"
+                        className="flex-1 gap-1.5 text-xs"
                         disabled={isPending}
                         onClick={() => runAction(returnToAI)}
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Devolver para IA
+                        Voltar p/ IA
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="flex-1 gap-1.5"
+                        className="flex-1 gap-1.5 text-xs"
                         disabled={isPending}
                         onClick={() => runAction(markPending)}
                       >
                         <Clock3 className="h-3.5 w-3.5" />
-                        Aguardando Ação
+                        Ag. Ação
                       </Button>
                     </>
                   )}
@@ -494,22 +494,22 @@ function ConvPanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 gap-1.5"
+                      className="flex-1 gap-1.5 text-xs"
                       disabled={isPending}
                       onClick={() => runAction(escalateConversation)}
                     >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      Devolver p/ Com Humano
+                      Voltar p/ Humano
                     </Button>
                   )}
                   <Button
                     size="sm"
-                    className="flex-1 gap-1.5"
+                    className="flex-1 gap-1.5 text-xs"
                     disabled={isPending}
                     onClick={() => runAction(closeConversation)}
                   >
                     <CheckCircle className="h-3.5 w-3.5" />
-                    {isPending ? 'Salvando…' : 'Marcar como Finalizado'}
+                    {isPending ? 'Salvando…' : 'Finalizar'}
                   </Button>
                   </div>
                 </>
