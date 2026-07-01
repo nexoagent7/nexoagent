@@ -17,6 +17,7 @@ type UserProfile = {
 type PlanInfo = {
   name: string
   conversations_limit: number | null
+  features: { tokens_limit?: number | null } | null
 }
 
 type CompanyData = {
@@ -89,6 +90,7 @@ export default async function DashboardPage() {
   let recentConversations: ConversationRow[] = []
   let groqTokensThisMonth = 0
   let groqCostBrl = 0
+  let tokensLimit: number | null | undefined = undefined  // undefined = ainda não carregado; null = ilimitado
 
   if (profile?.company_id) {
     const startOfMonth = new Date()
@@ -103,7 +105,7 @@ export default async function DashboardPage() {
         .gte('last_message_at', startOfMonth.toISOString()),
       admin
         .from('companies')
-        .select('plans(name, conversations_limit)')
+        .select('plans(name, conversations_limit, features)')
         .eq('id', profile.company_id)
         .single(),
       admin
@@ -126,7 +128,8 @@ export default async function DashboardPage() {
       : null
 
     conversationsLimit = plan?.conversations_limit ?? null
-    planName = plan?.name ?? 'Free'
+    planName           = plan?.name ?? 'Free'
+    tokensLimit        = plan?.features?.tokens_limit  // undefined → não encontrado, null → ilimitado
 
     conversationsThisMonth = count ?? 0
     recentConversations   = (convData ?? []) as ConversationRow[]
@@ -140,6 +143,12 @@ export default async function DashboardPage() {
 
   const progressPct = conversationsLimit && conversationsLimit > 0
     ? Math.min(100, Math.round((conversationsThisMonth / conversationsLimit) * 100))
+    : null
+
+  // tokensLimit === null → ilimitado (Autoridade); undefined → plano sem features ainda
+  const resolvedTokensLimit = tokensLimit === undefined ? null : tokensLimit
+  const tokenProgressPct = resolvedTokensLimit !== null && resolvedTokensLimit > 0
+    ? Math.min(100, Math.round((groqTokensThisMonth / resolvedTokensLimit) * 100))
     : null
 
   return (
@@ -223,6 +232,49 @@ export default async function DashboardPage() {
                   progressPct >= 90 ? 'bg-danger' : progressPct >= 70 ? 'bg-warning' : 'bg-success',
                 )}
                 style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          ) : (
+            <div className="h-2 w-full overflow-hidden rounded-full bg-success/20">
+              <div className="h-full w-full rounded-full bg-success/40" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Uso de tokens Groq */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                Tokens Groq este mês
+              </p>
+              {tokenProgressPct !== null ? (
+                <p className="mt-0.5 text-xs text-foreground-secondary">
+                  {groqTokensThisMonth.toLocaleString('pt-BR')} de {resolvedTokensLimit!.toLocaleString('pt-BR')} tokens usados ({tokenProgressPct}%)
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-foreground-secondary">Ilimitado</p>
+              )}
+            </div>
+            {tokenProgressPct !== null && (
+              <span className={cn(
+                'text-sm font-semibold',
+                tokenProgressPct >= 90 ? 'text-danger' : tokenProgressPct >= 70 ? 'text-warning' : 'text-success',
+              )}>
+                {tokenProgressPct}%
+              </span>
+            )}
+          </div>
+          {tokenProgressPct !== null ? (
+            <div className="h-2 w-full overflow-hidden rounded-full bg-border">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  tokenProgressPct >= 90 ? 'bg-danger' : tokenProgressPct >= 70 ? 'bg-warning' : 'bg-success',
+                )}
+                style={{ width: `${tokenProgressPct}%` }}
               />
             </div>
           ) : (

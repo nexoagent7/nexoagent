@@ -60,9 +60,17 @@ type AgentConfigRow = {
   escalation_instructions: string | null
 }
 
+type PlanFeatures = {
+  tokens_limit?:    number | null
+  kanban_columns?:  number
+  human_handoff?:   boolean
+}
+
 type CompanyRow = {
-  manager_whatsapp: string | null
-  plans: { conversations_limit: number | null } | { conversations_limit: number | null }[] | null
+  manager_whatsapp:            string | null
+  groq_tokens_used_this_month: number
+  plans: { conversations_limit: number | null; features: PlanFeatures | null } |
+         { conversations_limit: number | null; features: PlanFeatures | null }[] | null
 }
 
 type MessageRow = {
@@ -245,7 +253,7 @@ async function handleMessage(
         .single(),
       admin
         .from('companies')
-        .select('manager_whatsapp, plans(conversations_limit)')
+        .select('manager_whatsapp, groq_tokens_used_this_month, plans(conversations_limit, features)')
         .eq('id', company_id)
         .single(),
     ])
@@ -254,9 +262,12 @@ async function handleMessage(
     const company = companyData as CompanyRow | null
     const managerWhatsapp = company?.manager_whatsapp ?? null
     const rawPlans = company?.plans
-    const conversationsLimit: number | null = rawPlans
-      ? (Array.isArray(rawPlans) ? rawPlans[0]?.conversations_limit : rawPlans.conversations_limit) ?? null
+    const planRow = rawPlans
+      ? (Array.isArray(rawPlans) ? rawPlans[0] : rawPlans)
       : null
+    const conversationsLimit: number | null = planRow?.conversations_limit ?? null
+    const tokensLimit: number | null = planRow?.features?.tokens_limit ?? null
+    const tokensUsed: number = company?.groq_tokens_used_this_month ?? 0
 
     // 3. Reutiliza a conversa mais recente deste remote_jid, exceto se ela estiver
     //    'closed' — nesse caso, uma nova mensagem inicia um NOVO atendimento em vez
@@ -400,6 +411,18 @@ async function handleMessage(
         )
         return
       }
+    }
+
+    // 7b. Check Groq token limit
+    if (tokensLimit !== null && tokensUsed >= tokensLimit) {
+      console.warn('[agent] limite de tokens atingido:', tokensUsed, '/', tokensLimit)
+      const phone = remoteJid.replace(/@s\.whatsapp\.net$/, '')
+      await sendEvolutionText(
+        instanceName,
+        phone,
+        'Nosso assistente atingiu o limite mensal de atendimentos. Para continuar, faça upgrade do seu plano em nexoagent-gold.vercel.app/dashboard/planos'
+      )
+      return
     }
 
     // 8. Build system prompt
