@@ -72,12 +72,19 @@ export async function registerAction(
 
   const { data: companyData, error: companyError } = await admin
     .from('companies')
-    .insert({ name: companyName, slug: companySlug, plan_id: (planData as { id: string }).id })
+    .insert({
+      name:           companyName,
+      slug:           companySlug,
+      plan_id:        (planData as { id: string }).id,
+      email:          email,
+      owner_user_id:  data.user.id,
+    })
     .select('id')
     .single()
 
   if (companyError || !companyData) {
-    return { error: 'Erro ao criar empresa. Contate o suporte.' }
+    console.error('[register] company insert error:', companyError?.code, companyError?.message, companyError?.details)
+    return { error: `Erro ao criar empresa: ${companyError?.message ?? 'erro desconhecido'}` }
   }
 
   const companyId = (companyData as { id: string }).id
